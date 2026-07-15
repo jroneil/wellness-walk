@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: ./back_end/wellness-walk-planner
+    environment:
+      APP_CORS_ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      ZIP_LOOKUP_BASE_URL: https://api.zippopotam.us
+      ZIP_LOOKUP_CONNECTION_TIMEOUT_MS: 3000
+      ZIP_LOOKUP_RESPONSE_TIMEOUT_MS: 5000
+    ports:
+      - "9090:9090"
+
+  frontend:
+    build:
+      context: ./front_end/wellness_walk_planner_ui
+    environment:
+      BACKEND_URL: http://backend:9090
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend

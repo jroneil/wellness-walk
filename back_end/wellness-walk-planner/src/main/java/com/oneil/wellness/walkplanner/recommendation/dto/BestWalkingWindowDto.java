@@ -12,5 +12,10 @@ public record BestWalkingWindowDto(
         String ratingLabel,
         String summary,
         List<String> positiveReasons,
-        List<String> warnings) {
+        List<String> warnings,
+        int durationMinutes,
+        List<String> preferenceReasons,
+        int minimumScore,
+        boolean belowMinimumScore,
+        String minimumScoreMessage) {
 }

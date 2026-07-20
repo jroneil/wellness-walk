@@ -12,6 +12,12 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.oneil.wellness.walkplanner.dto.WeatherResponse;
 import com.oneil.wellness.walkplanner.exception.WeatherServiceException;
+import com.oneil.wellness.walkplanner.recommendation.dto.PreferredTimeOfDay;
+import com.oneil.wellness.walkplanner.recommendation.dto.RainTolerance;
+import com.oneil.wellness.walkplanner.recommendation.dto.RecommendationPreferencesDto;
+import com.oneil.wellness.walkplanner.recommendation.dto.TemperaturePreference;
+import com.oneil.wellness.walkplanner.recommendation.dto.UnitSystem;
+import com.oneil.wellness.walkplanner.recommendation.dto.WindTolerance;
 import com.oneil.wellness.walkplanner.service.WeatherService;
 import com.oneil.wellness.walkplanner.zip.service.ZipCodeNotFoundException;
 import com.oneil.wellness.walkplanner.zip.service.ZipLookupException;
@@ -31,10 +37,23 @@ public class WeatherController {
         this.zipWeatherService = zipWeatherService;
     }
 
+    public WeatherResponse currentWeather(
+            BigDecimal latitude,
+            BigDecimal longitude) {
+        return currentWeather(latitude, longitude, null, null, null, null, null, null, null);
+    }
+
     @GetMapping("/current")
     public WeatherResponse currentWeather(
             @RequestParam BigDecimal latitude,
-            @RequestParam BigDecimal longitude) {
+            @RequestParam BigDecimal longitude,
+            @RequestParam(required = false) Integer walkDurationMinutes,
+            @RequestParam(required = false) String preferredTimeOfDay,
+            @RequestParam(required = false) String temperaturePreference,
+            @RequestParam(required = false) String rainTolerance,
+            @RequestParam(required = false) String windTolerance,
+            @RequestParam(required = false) Integer minimumScore,
+            @RequestParam(required = false) String unitSystem) {
         if (latitude == null || longitude == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Both latitude and longitude are required");
         }
@@ -46,26 +65,81 @@ public class WeatherController {
         }
 
         try {
-            return weatherService.getCurrentWeather(latitude, longitude);
+            return weatherService.getCurrentWeather(latitude, longitude, preferences(
+                    walkDurationMinutes,
+                    preferredTimeOfDay,
+                    temperaturePreference,
+                    rainTolerance,
+                    windTolerance,
+                    minimumScore,
+                    unitSystem));
         } catch (WeatherServiceException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, ex.getMessage());
         }
     }
 
+    public WeatherResponse currentWeatherByZip(String zipCode) {
+        return currentWeatherByZip(zipCode, null, null, null, null, null, null, null);
+    }
+
     @GetMapping("/current/{zipCode}")
-    public WeatherResponse currentWeatherByZip(@PathVariable String zipCode) {
+    public WeatherResponse currentWeatherByZip(
+            @PathVariable String zipCode,
+            @RequestParam(required = false) Integer walkDurationMinutes,
+            @RequestParam(required = false) String preferredTimeOfDay,
+            @RequestParam(required = false) String temperaturePreference,
+            @RequestParam(required = false) String rainTolerance,
+            @RequestParam(required = false) String windTolerance,
+            @RequestParam(required = false) Integer minimumScore,
+            @RequestParam(required = false) String unitSystem) {
         if (zipCode == null || !zipCode.matches(ZIP_CODE_PATTERN)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a valid 5-digit ZIP code");
         }
 
         try {
-            return zipWeatherService.getCurrentWeather(zipCode);
+            return zipWeatherService.getCurrentWeather(zipCode, preferences(
+                    walkDurationMinutes,
+                    preferredTimeOfDay,
+                    temperaturePreference,
+                    rainTolerance,
+                    windTolerance,
+                    minimumScore,
+                    unitSystem));
         } catch (ZipCodeNotFoundException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ZIP code not found");
         } catch (ZipLookupException ex) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "ZIP lookup service temporarily unavailable");
         } catch (WeatherServiceException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Weather unavailable");
+        }
+    }
+
+    private RecommendationPreferencesDto preferences(
+            Integer walkDurationMinutes,
+            String preferredTimeOfDay,
+            String temperaturePreference,
+            String rainTolerance,
+            String windTolerance,
+            Integer minimumScore,
+            String unitSystem) {
+        return new RecommendationPreferencesDto(
+                walkDurationMinutes,
+                parseEnum(PreferredTimeOfDay.class, preferredTimeOfDay),
+                parseEnum(TemperaturePreference.class, temperaturePreference),
+                parseEnum(RainTolerance.class, rainTolerance),
+                parseEnum(WindTolerance.class, windTolerance),
+                minimumScore,
+                parseEnum(UnitSystem.class, unitSystem)).normalized();
+    }
+
+    private <T extends Enum<T>> T parseEnum(Class<T> enumType, String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Enum.valueOf(enumType, value.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            return null;
         }
     }
 }

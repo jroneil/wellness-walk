@@ -19,22 +19,30 @@ import java.util.Optional;
 
 import org.springframework.stereotype.Component;
 
+import com.oneil.wellness.walkplanner.environment.configuration.OpenMeteoEnvironmentProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oneil.wellness.walkplanner.environment.dto.EnvironmentalForecast;
+import com.oneil.wellness.walkplanner.environment.model.DaylightStatus;
 
 @Component
 public class OpenMeteoEnvironmentClient {
 
-    private static final String FORECAST_BASE_URL = "https://api.open-meteo.com/v1/forecast";
-    private static final String AIR_QUALITY_BASE_URL = "https://air-quality-api.open-meteo.com/v1/air-quality";
+    private static final String UV_SOURCE = "Open-Meteo Forecast API";
+    private static final String AQI_SOURCE = "Open-Meteo Air Quality API";
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final OpenMeteoEnvironmentProperties properties;
 
     public OpenMeteoEnvironmentClient() {
+        this(new OpenMeteoEnvironmentProperties());
+    }
+
+    public OpenMeteoEnvironmentClient(OpenMeteoEnvironmentProperties properties) {
+        this.properties = properties;
         this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(3))
+                .connectTimeout(Duration.ofMillis(properties.getConnectionTimeoutMs()))
                 .build();
         this.objectMapper = new ObjectMapper();
     }
@@ -53,20 +61,36 @@ public class OpenMeteoEnvironmentClient {
                 hourly.put(startTime, new EnvironmentalForecast.HourlyEnvironment(
                         startTime,
                         entry.getValue(),
+                        uvCategory(entry.getValue()),
+                        startTime,
+                        UV_SOURCE,
                         aqiByTime.get(startTime),
+                        aqiCategory(aqiByTime.get(startTime)),
+                        aqiByTime.containsKey(startTime) ? startTime : null,
+                        aqiByTime.containsKey(startTime) ? AQI_SOURCE : null,
                         daily != null ? daily.sunrise() : null,
                         daily != null ? daily.sunset() : null,
+                        daylightStatus(startTime, daily).name(),
                         remainingDaylightMinutes(startTime, daily)));
             }
 
             for (Map.Entry<String, BigDecimal> entry : aqiByTime.entrySet()) {
+                LocalDate date = parseDateTime(entry.getKey()).map(LocalDateTime::toLocalDate).orElse(null);
+                EnvironmentalForecast.DailyEnvironment daily = date != null ? forecastData.dailyByDate().get(date) : null;
                 hourly.putIfAbsent(entry.getKey(), new EnvironmentalForecast.HourlyEnvironment(
                         entry.getKey(),
                         null,
+                        "Unavailable",
+                        null,
+                        null,
                         entry.getValue(),
-                        null,
-                        null,
-                        null));
+                        aqiCategory(entry.getValue()),
+                        entry.getKey(),
+                        AQI_SOURCE,
+                        daily != null ? daily.sunrise() : null,
+                        daily != null ? daily.sunset() : null,
+                        daylightStatus(entry.getKey(), daily).name(),
+                        remainingDaylightMinutes(entry.getKey(), daily)));
             }
 
             Map<LocalDate, EnvironmentalForecast.DailyEnvironment> dailyWithAqi = new LinkedHashMap<>();
@@ -117,7 +141,7 @@ public class OpenMeteoEnvironmentClient {
     }
 
     private Optional<ForecastData> fetchForecastData(BigDecimal latitude, BigDecimal longitude) {
-        URI uri = URI.create(FORECAST_BASE_URL + "?" + query(Map.of(
+        URI uri = URI.create(properties.getForecastBaseUrl() + "?" + query(Map.of(
                 "latitude", latitude.toPlainString(),
                 "longitude", longitude.toPlainString(),
                 "hourly", "uv_index",
@@ -130,7 +154,7 @@ public class OpenMeteoEnvironmentClient {
     }
 
     private Optional<Map<String, BigDecimal>> fetchAqiData(BigDecimal latitude, BigDecimal longitude) {
-        URI uri = URI.create(AIR_QUALITY_BASE_URL + "?" + query(Map.of(
+        URI uri = URI.create(properties.getAirQualityBaseUrl() + "?" + query(Map.of(
                 "latitude", latitude.toPlainString(),
                 "longitude", longitude.toPlainString(),
                 "hourly", "us_aqi",
@@ -141,8 +165,9 @@ public class OpenMeteoEnvironmentClient {
 
     private Optional<String> send(URI uri) {
         HttpRequest request = HttpRequest.newBuilder(uri)
-                .timeout(Duration.ofSeconds(5))
+                .timeout(Duration.ofMillis(properties.getResponseTimeoutMs()))
                 .header("Accept", "application/json")
+                .header("User-Agent", properties.getUserAgent())
                 .build();
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
@@ -176,16 +201,76 @@ public class OpenMeteoEnvironmentClient {
     }
 
     private Integer remainingDaylightMinutes(String startTime, EnvironmentalForecast.DailyEnvironment daily) {
-        if (daily == null || daily.sunset() == null) {
+        if (daily == null || daily.sunrise() == null || daily.sunset() == null) {
             return null;
         }
         Optional<LocalDateTime> start = parseDateTime(startTime);
+        Optional<LocalDateTime> sunrise = parseDateTime(daily.sunrise());
         Optional<LocalDateTime> sunset = parseDateTime(daily.sunset());
-        if (start.isEmpty() || sunset.isEmpty()) {
+        if (start.isEmpty() || sunrise.isEmpty() || sunset.isEmpty()) {
+            return null;
+        }
+        if (start.get().isBefore(sunrise.get()) || !start.get().isBefore(sunset.get())) {
             return null;
         }
         long minutes = Duration.between(start.get(), sunset.get()).toMinutes();
         return (int) Math.max(0, minutes);
+    }
+
+    private DaylightStatus daylightStatus(String startTime, EnvironmentalForecast.DailyEnvironment daily) {
+        if (daily == null || daily.sunrise() == null || daily.sunset() == null) {
+            return DaylightStatus.UNKNOWN;
+        }
+        Optional<LocalDateTime> start = parseDateTime(startTime);
+        Optional<LocalDateTime> sunrise = parseDateTime(daily.sunrise());
+        Optional<LocalDateTime> sunset = parseDateTime(daily.sunset());
+        if (start.isEmpty() || sunrise.isEmpty() || sunset.isEmpty()) {
+            return DaylightStatus.UNKNOWN;
+        }
+        return !start.get().isBefore(sunrise.get()) && start.get().isBefore(sunset.get())
+                ? DaylightStatus.DAYLIGHT
+                : DaylightStatus.NIGHT;
+    }
+
+    private String aqiCategory(BigDecimal aqi) {
+        if (aqi == null) {
+            return "Unavailable";
+        }
+        if (aqi.compareTo(BigDecimal.valueOf(50)) <= 0) {
+            return "Good";
+        }
+        if (aqi.compareTo(BigDecimal.valueOf(100)) <= 0) {
+            return "Moderate";
+        }
+        if (aqi.compareTo(BigDecimal.valueOf(150)) <= 0) {
+            return "Unhealthy for Sensitive Groups";
+        }
+        if (aqi.compareTo(BigDecimal.valueOf(200)) <= 0) {
+            return "Unhealthy";
+        }
+        if (aqi.compareTo(BigDecimal.valueOf(300)) <= 0) {
+            return "Very Unhealthy";
+        }
+        return "Hazardous";
+    }
+
+    private String uvCategory(BigDecimal uvIndex) {
+        if (uvIndex == null) {
+            return "Unavailable";
+        }
+        if (uvIndex.compareTo(BigDecimal.valueOf(2)) <= 0) {
+            return "Low";
+        }
+        if (uvIndex.compareTo(BigDecimal.valueOf(5)) <= 0) {
+            return "Moderate";
+        }
+        if (uvIndex.compareTo(BigDecimal.valueOf(7)) <= 0) {
+            return "High";
+        }
+        if (uvIndex.compareTo(BigDecimal.valueOf(10)) <= 0) {
+            return "Very High";
+        }
+        return "Extreme";
     }
 
     private Optional<LocalDateTime> parseDateTime(String value) {

@@ -12,10 +12,10 @@ public record ScoredWalkingPeriod(
         Integer windScore,
         Integer humidityScore,
         Integer daylightScore,
-        Integer aqiPenalty,
-        Integer uvPenalty,
+        Integer airQualityScore,
+        Integer uvScore,
         java.math.BigDecimal feelsLikeTemperature,
-        String feelsLikeSource,
+        String feelsLikeMethod,
         List<String> reasons,
         List<String> warnings) {
 

@@ -16,10 +16,10 @@ public record WalkingRecommendationDto(
         Integer windScore,
         Integer humidityScore,
         Integer daylightScore,
-        Integer aqiPenalty,
-        Integer uvPenalty,
+        Integer airQualityScore,
+        Integer uvScore,
         BigDecimal feelsLikeTemperature,
-        String feelsLikeSource,
+        String feelsLikeMethod,
         List<String> reasons,
         List<String> warnings) {
 }

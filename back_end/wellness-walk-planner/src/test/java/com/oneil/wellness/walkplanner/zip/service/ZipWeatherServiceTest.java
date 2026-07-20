@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import com.oneil.wellness.walkplanner.dto.CurrentWeatherSummary;
 import com.oneil.wellness.walkplanner.dto.WeatherResponse;
+import com.oneil.wellness.walkplanner.recommendation.dto.RecommendationPreferencesDto;
 import com.oneil.wellness.walkplanner.service.WeatherService;
 import com.oneil.wellness.walkplanner.config.ZipLookupProperties;
 import com.oneil.wellness.walkplanner.zip.client.ZipLookupClient;
@@ -84,6 +85,12 @@ class ZipWeatherServiceTest {
 
         @Override
         public WeatherResponse getCurrentWeather(BigDecimal latitude, BigDecimal longitude) {
+            return getCurrentWeather(latitude, longitude, RecommendationPreferencesDto.defaults());
+        }
+
+        @Override
+        public WeatherResponse getCurrentWeather(BigDecimal latitude, BigDecimal longitude,
+                RecommendationPreferencesDto preferences) {
             requestedLatitude = latitude;
             requestedLongitude = longitude;
             return response;

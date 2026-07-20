@@ -15,9 +15,16 @@ public record EnvironmentalForecast(
     public record HourlyEnvironment(
             String startTime,
             BigDecimal uvIndex,
+            String uvCategory,
+            String uvObservationOrForecastTime,
+            String uvSource,
             BigDecimal aqi,
+            String aqiCategory,
+            String aqiObservationTime,
+            String aqiSource,
             String sunrise,
             String sunset,
+            String daylightStatus,
             Integer remainingDaylightMinutes) {
     }
 

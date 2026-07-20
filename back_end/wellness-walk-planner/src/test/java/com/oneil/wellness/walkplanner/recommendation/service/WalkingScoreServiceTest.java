@@ -20,7 +20,7 @@ class WalkingScoreServiceTest {
 
     @ParameterizedTest
     @MethodSource("temperatureCases")
-    void scoresTemperatureBoundaries(String temperature, int expectedScore) {
+    void scoresFeelsLikeTemperatureBoundaries(String temperature, int expectedScore) {
         ScoredWalkingPeriod result = service.score(period(new BigDecimal(temperature), BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.valueOf(40), true));
 
@@ -29,18 +29,18 @@ class WalkingScoreServiceTest {
 
     static Stream<Arguments> temperatureCases() {
         return Stream.of(
-                Arguments.of("60", 40),
-                Arguments.of("72", 40),
-                Arguments.of("55", 35),
-                Arguments.of("59", 35),
-                Arguments.of("73", 35),
-                Arguments.of("78", 35),
-                Arguments.of("79", 25),
-                Arguments.of("84", 25),
-                Arguments.of("45", 20),
-                Arguments.of("54", 20),
-                Arguments.of("85", 10),
-                Arguments.of("90", 10),
+                Arguments.of("60", 30),
+                Arguments.of("72", 30),
+                Arguments.of("55", 26),
+                Arguments.of("59", 26),
+                Arguments.of("73", 26),
+                Arguments.of("78", 26),
+                Arguments.of("79", 18),
+                Arguments.of("84", 18),
+                Arguments.of("45", 15),
+                Arguments.of("54", 15),
+                Arguments.of("85", 8),
+                Arguments.of("90", 8),
                 Arguments.of("44", 0),
                 Arguments.of("91", 0));
     }
@@ -56,12 +56,12 @@ class WalkingScoreServiceTest {
 
     static Stream<Arguments> precipitationCases() {
         return Stream.of(
-                Arguments.of(BigDecimal.ZERO, 25),
-                Arguments.of(BigDecimal.TEN, 25),
-                Arguments.of(BigDecimal.valueOf(11), 20),
-                Arguments.of(BigDecimal.valueOf(25), 20),
-                Arguments.of(BigDecimal.valueOf(26), 10),
-                Arguments.of(BigDecimal.valueOf(50), 10),
+                Arguments.of(BigDecimal.ZERO, 20),
+                Arguments.of(BigDecimal.TEN, 20),
+                Arguments.of(BigDecimal.valueOf(11), 16),
+                Arguments.of(BigDecimal.valueOf(25), 16),
+                Arguments.of(BigDecimal.valueOf(26), 8),
+                Arguments.of(BigDecimal.valueOf(50), 8),
                 Arguments.of(BigDecimal.valueOf(51), 0),
                 Arguments.of(null, 0));
     }
@@ -77,12 +77,12 @@ class WalkingScoreServiceTest {
 
     static Stream<Arguments> windCases() {
         return Stream.of(
-                Arguments.of(BigDecimal.ZERO, 15),
-                Arguments.of(BigDecimal.TEN, 15),
-                Arguments.of(BigDecimal.valueOf(11), 10),
-                Arguments.of(BigDecimal.valueOf(15), 10),
-                Arguments.of(BigDecimal.valueOf(16), 5),
-                Arguments.of(BigDecimal.valueOf(20), 5),
+                Arguments.of(BigDecimal.ZERO, 10),
+                Arguments.of(BigDecimal.TEN, 10),
+                Arguments.of(BigDecimal.valueOf(11), 7),
+                Arguments.of(BigDecimal.valueOf(15), 7),
+                Arguments.of(BigDecimal.valueOf(16), 3),
+                Arguments.of(BigDecimal.valueOf(20), 3),
                 Arguments.of(BigDecimal.valueOf(21), 0),
                 Arguments.of(null, 0));
     }
@@ -109,80 +109,169 @@ class WalkingScoreServiceTest {
                 Arguments.of(null, 0));
     }
 
-    @Test
-    void scoresDaylightAndNighttime() {
-        assertThat(service.score(period(BigDecimal.valueOf(70), BigDecimal.ZERO, BigDecimal.ZERO,
-                BigDecimal.valueOf(40), true)).daylightScore()).isEqualTo(10);
-        assertThat(service.score(period(BigDecimal.valueOf(70), BigDecimal.ZERO, BigDecimal.ZERO,
-                BigDecimal.valueOf(40), false)).daylightScore()).isEqualTo(2);
+    @ParameterizedTest
+    @MethodSource("daylightCases")
+    void scoresDaylightBoundaries(String daylightStatus, int expectedScore) {
+        ScoredWalkingPeriod result = service.score(period(BigDecimal.valueOf(70), BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.valueOf(40), true, daylightStatus));
+
+        assertThat(result.daylightScore()).isEqualTo(expectedScore);
+    }
+
+    static Stream<Arguments> daylightCases() {
+        return Stream.of(
+                Arguments.of("DAYLIGHT", 10),
+                Arguments.of("TWILIGHT", 5),
+                Arguments.of("NIGHT", 2),
+                Arguments.of("UNKNOWN", 0),
+                Arguments.of(null, 0));
+    }
+
+    @ParameterizedTest
+    @MethodSource("aqiCases")
+    void scoresAirQualityBoundaries(BigDecimal aqi, int expectedScore) {
+        ScoredWalkingPeriod result = service.score(withEnvironment(
+                period(BigDecimal.valueOf(70), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.valueOf(40), true),
+                null,
+                aqi,
+                "DAYLIGHT"));
+
+        assertThat(result.airQualityScore()).isEqualTo(expectedScore);
+    }
+
+    static Stream<Arguments> aqiCases() {
+        return Stream.of(
+                Arguments.of(BigDecimal.ZERO, 10),
+                Arguments.of(BigDecimal.valueOf(50), 10),
+                Arguments.of(BigDecimal.valueOf(51), 7),
+                Arguments.of(BigDecimal.valueOf(100), 7),
+                Arguments.of(BigDecimal.valueOf(101), 3),
+                Arguments.of(BigDecimal.valueOf(150), 3),
+                Arguments.of(BigDecimal.valueOf(151), 0),
+                Arguments.of(null, 0));
+    }
+
+    @ParameterizedTest
+    @MethodSource("uvCases")
+    void scoresUvBoundaries(BigDecimal uvIndex, int expectedScore) {
+        ScoredWalkingPeriod result = service.score(withEnvironment(
+                period(BigDecimal.valueOf(70), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.valueOf(40), true),
+                uvIndex,
+                null,
+                "DAYLIGHT"));
+
+        assertThat(result.uvScore()).isEqualTo(expectedScore);
+    }
+
+    static Stream<Arguments> uvCases() {
+        return Stream.of(
+                Arguments.of(BigDecimal.ZERO, 10),
+                Arguments.of(BigDecimal.valueOf(2), 10),
+                Arguments.of(BigDecimal.valueOf(3), 7),
+                Arguments.of(BigDecimal.valueOf(5), 7),
+                Arguments.of(BigDecimal.valueOf(6), 3),
+                Arguments.of(BigDecimal.valueOf(7), 3),
+                Arguments.of(BigDecimal.valueOf(8), 0),
+                Arguments.of(null, 0));
     }
 
     @Test
     void missingTemperatureIsNotScorableAndOptionalMissingValuesAreExplained() {
         ScoredWalkingPeriod missingTemperature = service.score(period(null, null, null, null, true));
-        ScoredWalkingPeriod missingOptional = service.score(period(BigDecimal.valueOf(70), null, null, null, true));
+        ScoredWalkingPeriod missingOptional = service.score(period(BigDecimal.valueOf(70), null, null, null, true, "UNKNOWN"));
 
         assertThat(missingTemperature.score()).isNull();
         assertThat(missingTemperature.reasons()).contains("Temperature unavailable");
-        assertThat(missingOptional.score()).isEqualTo(50);
+        assertThat(missingOptional.score()).isEqualTo(30);
         assertThat(missingOptional.precipitationScore()).isZero();
         assertThat(missingOptional.windScore()).isZero();
         assertThat(missingOptional.humidityScore()).isZero();
-        assertThat(missingOptional.reasons()).contains("Rain chance unavailable", "Wind speed unavailable", "Humidity unavailable");
+        assertThat(missingOptional.daylightScore()).isZero();
+        assertThat(missingOptional.airQualityScore()).isZero();
+        assertThat(missingOptional.uvScore()).isZero();
+        assertThat(missingOptional.reasons()).contains(
+                "Rain chance unavailable",
+                "Wind speed unavailable",
+                "Humidity unavailable",
+                "Sunrise and sunset unavailable",
+                "Air quality unavailable",
+                "UV data unavailable");
     }
 
     @Test
     void usesFeelsLikeTemperatureAndExplainsHeatIndex() {
-        ScoredWalkingPeriod result = service.score(period(BigDecimal.valueOf(86), BigDecimal.ZERO, BigDecimal.valueOf(5),
-                BigDecimal.valueOf(70), true)
-                        .withEnvironmentalData(BigDecimal.valueOf(97), "HEAT_INDEX", null, null, null, null, null));
+        ScoredWalkingPeriod result = service.score(withEnvironment(
+                period(BigDecimal.valueOf(86), BigDecimal.ZERO, BigDecimal.valueOf(5), BigDecimal.valueOf(70), true),
+                BigDecimal.valueOf(97),
+                "HEAT_INDEX",
+                null,
+                null,
+                "DAYLIGHT"));
 
         assertThat(result.temperatureScore()).isZero();
-        assertThat(result.score()).isEqualTo(57);
         assertThat(result.feelsLikeTemperature()).isEqualByComparingTo("97");
-        assertThat(result.reasons()).contains("Feels like 97°F due to humidity");
+        assertThat(result.reasons()).contains("Feels like 97°F because of heat and humidity");
         assertThat(result.warnings()).contains("Excessive heat");
     }
 
     @Test
-    void scoresAqiAndUvPenaltiesAndExplainsPointRemoval() {
-        ScoredWalkingPeriod result = service.score(period(BigDecimal.valueOf(70), BigDecimal.ZERO, BigDecimal.valueOf(5),
-                BigDecimal.valueOf(45), true)
-                        .withEnvironmentalData(BigDecimal.valueOf(70), "ACTUAL", BigDecimal.valueOf(8),
-                                BigDecimal.valueOf(151), "2026-07-15T05:30", "2026-07-15T20:30", 120));
+    void usesFeelsLikeTemperatureAndExplainsWindChill() {
+        ScoredWalkingPeriod result = service.score(withEnvironment(
+                period(BigDecimal.valueOf(30), BigDecimal.ZERO, BigDecimal.valueOf(10), BigDecimal.valueOf(50), true),
+                BigDecimal.valueOf(24),
+                "WIND_CHILL",
+                null,
+                null,
+                "DAYLIGHT"));
 
-        assertThat(result.aqiPenalty()).isEqualTo(15);
-        assertThat(result.uvPenalty()).isEqualTo(10);
-        assertThat(result.daylightScore()).isEqualTo(10);
-        assertThat(result.score()).isEqualTo(75);
-        assertThat(result.reasons()).contains("Air quality reduced score by 15 points", "UV reduced score by 10 points");
+        assertThat(result.temperatureScore()).isZero();
+        assertThat(result.reasons()).contains("Feels like 24°F because of wind chill");
+        assertThat(result.warnings()).contains("Freezing conditions");
+    }
+
+    @Test
+    void totalEqualsSevenVisibleCategoryScores() {
+        ScoredWalkingPeriod result = service.score(withEnvironment(
+                period(BigDecimal.valueOf(70), BigDecimal.ZERO, BigDecimal.valueOf(5), BigDecimal.valueOf(45), true),
+                BigDecimal.valueOf(8),
+                BigDecimal.valueOf(151),
+                "DAYLIGHT"));
+
+        int visibleTotal = result.temperatureScore()
+                + result.precipitationScore()
+                + result.windScore()
+                + result.humidityScore()
+                + result.daylightScore()
+                + result.airQualityScore()
+                + result.uvScore();
+
+        assertThat(result.airQualityScore()).isZero();
+        assertThat(result.uvScore()).isZero();
+        assertThat(result.score()).isEqualTo(80);
+        assertThat(result.score()).isEqualTo(visibleTotal);
+        assertThat(result.score()).isBetween(0, 100);
+        assertThat(result.reasons()).contains("Poor air quality", "Very High UV exposure");
         assertThat(result.warnings()).contains("Poor air quality", "High UV", "Sun protection recommended");
     }
 
     @Test
-    void missingAqiUvAndSunriseSunsetDoNotBreakRecommendations() {
-        ScoredWalkingPeriod result = service.score(period(BigDecimal.valueOf(70), BigDecimal.ZERO, BigDecimal.valueOf(5),
-                BigDecimal.valueOf(45), true));
+    void calculatesRatingAndWarningsWithoutHiddenDeductions() {
+        ScoredWalkingPeriod result = service.score(withEnvironment(
+                period(BigDecimal.valueOf(91), BigDecimal.valueOf(70), BigDecimal.valueOf(25), BigDecimal.valueOf(90), false, "NIGHT"),
+                BigDecimal.valueOf(9),
+                BigDecimal.valueOf(120),
+                "NIGHT"));
 
-        assertThat(result.aqiPenalty()).isZero();
-        assertThat(result.uvPenalty()).isZero();
-        assertThat(result.daylightScore()).isEqualTo(10);
-        assertThat(result.score()).isEqualTo(100);
-        assertThat(result.reasons()).contains("Air quality unavailable", "UV index unavailable");
-    }
-
-    @Test
-    void calculatesTotalRatingAndWarnings() {
-        ScoredWalkingPeriod result = service.score(period(BigDecimal.valueOf(91), BigDecimal.valueOf(70),
-                BigDecimal.valueOf(25), BigDecimal.valueOf(90), false));
-
-        assertThat(result.score()).isEqualTo(2);
+        assertThat(result.score()).isEqualTo(5);
         assertThat(result.rating()).isEqualTo(WalkingRating.NOT_RECOMMENDED);
         assertThat(result.warnings()).containsExactly(
                 "Excessive heat",
                 "Rain is likely",
                 "Strong wind",
                 "Very high humidity",
+                "Air quality may be unhealthy for sensitive groups",
+                "High UV",
+                "Sun protection recommended",
                 "Limited daylight");
     }
 
@@ -208,10 +297,40 @@ class WalkingScoreServiceTest {
                 Arguments.of(0, WalkingRating.NOT_RECOMMENDED));
     }
 
+    private HourlyForecastPeriod withEnvironment(HourlyForecastPeriod period, BigDecimal uvIndex, BigDecimal aqi,
+            String daylightStatus) {
+        return withEnvironment(period, period.temperature(), "ACTUAL_TEMPERATURE", uvIndex, aqi, daylightStatus);
+    }
+
+    private HourlyForecastPeriod withEnvironment(HourlyForecastPeriod period, BigDecimal feelsLikeTemperature,
+            String feelsLikeMethod, BigDecimal uvIndex, BigDecimal aqi, String daylightStatus) {
+        return period.withEnvironmentalData(
+                feelsLikeTemperature,
+                feelsLikeMethod,
+                uvIndex,
+                uvIndex == null ? "Unavailable" : uvIndex.compareTo(BigDecimal.valueOf(7)) > 0 ? "Very High" : "Low",
+                uvIndex == null ? null : "2026-07-15T13:00",
+                uvIndex == null ? null : "Open-Meteo Forecast API",
+                aqi,
+                aqi == null ? "Unavailable" : aqi.compareTo(BigDecimal.valueOf(150)) > 0 ? "Unhealthy" : "Moderate",
+                aqi == null ? null : "2026-07-15T13:00",
+                aqi == null ? null : "Open-Meteo Air Quality API",
+                "2026-07-15T05:30",
+                "2026-07-15T20:30",
+                daylightStatus,
+                "DAYLIGHT".equals(daylightStatus) ? 450 : null);
+    }
+
     private HourlyForecastPeriod period(BigDecimal temperature, BigDecimal precipitation, BigDecimal windSpeed,
             BigDecimal humidity, Boolean isDaytime) {
+        return period(temperature, precipitation, windSpeed, humidity, isDaytime, "DAYLIGHT");
+    }
+
+    private HourlyForecastPeriod period(BigDecimal temperature, BigDecimal precipitation, BigDecimal windSpeed,
+            BigDecimal humidity, Boolean isDaytime, String daylightStatus) {
         return new HourlyForecastPeriod(
                 "2026-07-15T13:00:00-04:00",
+                temperature,
                 temperature,
                 "°F",
                 "Sunny",
@@ -222,12 +341,19 @@ class WalkingScoreServiceTest {
                 "NW",
                 isDaytime,
                 temperature,
-                "ACTUAL",
+                temperature == null ? null : "ACTUAL_TEMPERATURE",
+                null,
+                "Unavailable",
                 null,
                 null,
                 null,
+                "Unavailable",
                 null,
                 null,
+                daylightStatus == null ? null : "2026-07-15T05:30",
+                daylightStatus == null ? null : "2026-07-15T20:30",
+                daylightStatus,
+                "DAYLIGHT".equals(daylightStatus) ? 450 : null,
                 null);
     }
 }

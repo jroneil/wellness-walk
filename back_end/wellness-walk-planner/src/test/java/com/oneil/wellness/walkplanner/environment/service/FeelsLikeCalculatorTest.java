@@ -17,7 +17,7 @@ class FeelsLikeCalculatorTest {
                 BigDecimal.valueOf(70),
                 BigDecimal.valueOf(5));
 
-        assertThat(result.source()).isEqualTo("HEAT_INDEX");
+        assertThat(result.method().name()).isEqualTo("HEAT_INDEX");
         assertThat(result.temperature()).isEqualByComparingTo("105.9");
     }
 
@@ -28,7 +28,7 @@ class FeelsLikeCalculatorTest {
                 BigDecimal.valueOf(50),
                 BigDecimal.valueOf(10));
 
-        assertThat(result.source()).isEqualTo("WIND_CHILL");
+        assertThat(result.method().name()).isEqualTo("WIND_CHILL");
         assertThat(result.temperature()).isEqualByComparingTo("21.2");
     }
 
@@ -39,7 +39,7 @@ class FeelsLikeCalculatorTest {
                 BigDecimal.valueOf(70),
                 BigDecimal.valueOf(10));
 
-        assertThat(result.source()).isEqualTo("ACTUAL");
+        assertThat(result.method().name()).isEqualTo("ACTUAL_TEMPERATURE");
         assertThat(result.temperature()).isEqualByComparingTo("75.0");
     }
 }

@@ -35,6 +35,7 @@ import com.oneil.wellness.walkplanner.environment.service.FeelsLikeCalculator;
 import com.oneil.wellness.walkplanner.environment.service.FeelsLikeCalculator.FeelsLikeResult;
 import com.oneil.wellness.walkplanner.exception.WeatherServiceException;
 import com.oneil.wellness.walkplanner.recommendation.dto.DailyOutlookDto;
+import com.oneil.wellness.walkplanner.recommendation.dto.RecommendationPreferencesDto;
 import com.oneil.wellness.walkplanner.recommendation.dto.WalkingRecommendationDto;
 import com.oneil.wellness.walkplanner.recommendation.service.WalkingRecommendationService;
 
@@ -69,6 +70,13 @@ public class NwsWeatherClient {
     }
 
     public WeatherResponse fetchCurrentWeather(BigDecimal latitude, BigDecimal longitude) {
+        return fetchCurrentWeather(latitude, longitude, RecommendationPreferencesDto.defaults());
+    }
+
+    public WeatherResponse fetchCurrentWeather(BigDecimal latitude, BigDecimal longitude, RecommendationPreferencesDto preferences) {
+        RecommendationPreferencesDto normalizedPreferences = preferences == null
+                ? RecommendationPreferencesDto.defaults()
+                : preferences.normalized();
         try {
             PointResponse points = fetchPoints(latitude, longitude);
             String locationName = points.locationName();
@@ -77,14 +85,16 @@ public class NwsWeatherClient {
             EnvironmentalForecast environmentalForecast = fetchEnvironmentalForecast(latitude, longitude);
             List<HourlyForecastPeriod> hourlyPeriods = withWalkingRecommendations(
                     enrichHourlyPeriods(fetchHourlyForecastPeriods(hourlyForecastUrl), environmentalForecast));
-            List<DailyOutlookDto> weeklyOutlook = buildWeeklyOutlook(fetchDailyForecastPeriods(dailyForecastUrl), hourlyPeriods);
+            List<DailyOutlookDto> weeklyOutlook = buildWeeklyOutlook(fetchDailyForecastPeriods(dailyForecastUrl), hourlyPeriods,
+                    normalizedPreferences);
             var observation = Optional.ofNullable(points.observationStationUrl())
                     .flatMap(this::fetchLatestObservation);
 
             String dataType = observation.isPresent() ? "OBSERVATION" : "HOURLY_FORECAST";
             CurrentWeatherSummary current = buildCurrentWeatherSummary(observation, hourlyPeriods);
 
-            return buildPublicWeatherResponse(locationName, latitude, longitude, hourlyPeriods, weeklyOutlook, dataType, current);
+            return buildPublicWeatherResponse(locationName, latitude, longitude, hourlyPeriods, weeklyOutlook, dataType, current,
+                    normalizedPreferences);
         } catch (WeatherServiceException ex) {
             throw ex;
         } catch (Exception ex) {
@@ -95,6 +105,13 @@ public class NwsWeatherClient {
     WeatherResponse buildPublicWeatherResponse(String locationName, BigDecimal latitude, BigDecimal longitude,
             List<HourlyForecastPeriod> hourlyPeriods, List<DailyOutlookDto> weeklyOutlook, String dataType,
             CurrentWeatherSummary current) {
+        return buildPublicWeatherResponse(locationName, latitude, longitude, hourlyPeriods, weeklyOutlook, dataType, current,
+                RecommendationPreferencesDto.defaults());
+    }
+
+    WeatherResponse buildPublicWeatherResponse(String locationName, BigDecimal latitude, BigDecimal longitude,
+            List<HourlyForecastPeriod> hourlyPeriods, List<DailyOutlookDto> weeklyOutlook, String dataType,
+            CurrentWeatherSummary current, RecommendationPreferencesDto preferences) {
         CurrentWeatherSummary summary = current != null ? current : buildCurrentWeatherSummary(Optional.empty(), hourlyPeriods);
         List<HourlyForecastPeriod> visibleHourlyPeriods = hourlyPeriods.stream().limit(12).toList();
         return new WeatherResponse(
@@ -103,7 +120,8 @@ public class NwsWeatherClient {
                 longitude.setScale(4, RoundingMode.HALF_UP),
                 summary,
                 environmentalConditions(summary, visibleHourlyPeriods),
-                walkingRecommendationService.bestWindow(visibleHourlyPeriods),
+                walkingRecommendationService.bestWindow(visibleHourlyPeriods,
+                        preferences == null ? RecommendationPreferencesDto.defaults() : preferences.normalized()),
                 visibleHourlyPeriods,
                 weeklyOutlook);
     }
@@ -260,6 +278,7 @@ public class NwsWeatherClient {
             results.add(new HourlyForecastPeriod(
                     startTime,
                     temperature,
+                    temperature,
                     temperatureUnit,
                     shortForecast,
                     iconUrl,
@@ -268,6 +287,13 @@ public class NwsWeatherClient {
                     windSpeed,
                     windDirection,
                     isDaytime,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
                     null,
                     null,
                     null,
@@ -359,11 +385,18 @@ public class NwsWeatherClient {
                     FeelsLikeResult feelsLike = feelsLikeCalculator.calculate(period.temperature(), period.humidity(), period.windSpeed());
                     return period.withEnvironmentalData(
                             feelsLike.temperature(),
-                            feelsLike.source(),
+                            feelsLike.method() != null ? feelsLike.method().name() : null,
                             environment != null ? environment.uvIndex() : null,
+                            environment != null ? environment.uvCategory() : "Unavailable",
+                            environment != null ? environment.uvObservationOrForecastTime() : null,
+                            environment != null ? environment.uvSource() : null,
                             environment != null ? environment.aqi() : null,
+                            environment != null ? environment.aqiCategory() : "Unavailable",
+                            environment != null ? environment.aqiObservationTime() : null,
+                            environment != null ? environment.aqiSource() : null,
                             environment != null && environment.sunrise() != null ? environment.sunrise() : daily != null ? daily.sunrise() : null,
                             environment != null && environment.sunset() != null ? environment.sunset() : daily != null ? daily.sunset() : null,
+                            environment != null ? environment.daylightStatus() : "UNKNOWN",
                             environment != null ? environment.remainingDaylightMinutes() : null);
                 })
                 .toList();
@@ -386,30 +419,49 @@ public class NwsWeatherClient {
         HourlyForecastPeriod firstHour = visibleHourlyPeriods.isEmpty() ? null : visibleHourlyPeriods.get(0);
         if (firstHour == null) {
             return new EnvironmentalConditionsDto(
+                    current.temperature(),
                     current.feelsLike(),
-                    "ACTUAL",
+                    current.temperatureUnit(),
+                    "ACTUAL_TEMPERATURE",
                     null,
                     "Unavailable",
                     null,
+                    null,
+                    null,
                     "Unavailable",
                     null,
                     null,
+                    null,
+                    null,
+                    "UNKNOWN",
                     null);
         }
         return new EnvironmentalConditionsDto(
+                firstHour.actualTemperature(),
                 firstHour.feelsLikeTemperature(),
-                firstHour.feelsLikeSource(),
+                firstHour.temperatureUnit(),
+                firstHour.feelsLikeMethod(),
                 firstHour.aqi(),
-                aqiCategory(firstHour.aqi()),
+                firstHour.aqiCategory(),
+                firstHour.aqiObservationTime(),
+                firstHour.aqiSource(),
                 firstHour.uvIndex(),
-                uvCategory(firstHour.uvIndex()),
+                firstHour.uvCategory(),
+                firstHour.uvObservationOrForecastTime(),
+                firstHour.uvSource(),
                 firstHour.sunrise(),
                 firstHour.sunset(),
+                firstHour.daylightStatus(),
                 firstHour.remainingDaylightMinutes());
     }
 
     List<DailyOutlookDto> buildWeeklyOutlook(List<DailyForecastPeriod> dailyPeriods,
             List<HourlyForecastPeriod> hourlyPeriods) {
+        return buildWeeklyOutlook(dailyPeriods, hourlyPeriods, RecommendationPreferencesDto.defaults());
+    }
+
+    List<DailyOutlookDto> buildWeeklyOutlook(List<DailyForecastPeriod> dailyPeriods,
+            List<HourlyForecastPeriod> hourlyPeriods, RecommendationPreferencesDto preferences) {
         Map<LocalDate, DailyOutlookAccumulator> days = new LinkedHashMap<>();
         for (DailyForecastPeriod period : dailyPeriods) {
             parseDate(period.startTime()).ifPresent(date -> days
@@ -422,14 +474,20 @@ public class NwsWeatherClient {
 
         return days.values().stream()
                 .limit(7)
-                .map(day -> day.toDto(bestHourlyPeriodForDate(day.date(), hourlyPeriods), hourlyPeriods))
+                .map(day -> day.toDto(bestHourlyPeriodForDate(day.date(), hourlyPeriods,
+                        preferences == null ? RecommendationPreferencesDto.defaults() : preferences.normalized()), hourlyPeriods))
                 .toList();
     }
 
     private Optional<HourlyForecastPeriod> bestHourlyPeriodForDate(LocalDate date, List<HourlyForecastPeriod> hourlyPeriods) {
+        return bestHourlyPeriodForDate(date, hourlyPeriods, RecommendationPreferencesDto.defaults());
+    }
+
+    private Optional<HourlyForecastPeriod> bestHourlyPeriodForDate(LocalDate date, List<HourlyForecastPeriod> hourlyPeriods,
+            RecommendationPreferencesDto preferences) {
         return walkingRecommendationService.bestPeriod(hourlyPeriods.stream()
                 .filter(period -> parseDate(period.startTime()).map(date::equals).orElse(false))
-                .toList());
+                .toList(), preferences);
     }
 
     private Optional<LocalDate> parseDate(String startTime) {
@@ -484,38 +542,6 @@ public class NwsWeatherClient {
             return null;
         }
         return BigDecimal.valueOf(Double.parseDouble(numeric));
-    }
-
-    private String aqiCategory(BigDecimal aqi) {
-        if (aqi == null) {
-            return "Unavailable";
-        }
-        if (aqi.compareTo(BigDecimal.valueOf(50)) <= 0) {
-            return "Excellent";
-        }
-        if (aqi.compareTo(BigDecimal.valueOf(100)) <= 0) {
-            return "Good";
-        }
-        if (aqi.compareTo(BigDecimal.valueOf(150)) <= 0) {
-            return "Moderate";
-        }
-        return "Poor";
-    }
-
-    private String uvCategory(BigDecimal uvIndex) {
-        if (uvIndex == null) {
-            return "Unavailable";
-        }
-        if (uvIndex.compareTo(BigDecimal.valueOf(2)) <= 0) {
-            return "Low";
-        }
-        if (uvIndex.compareTo(BigDecimal.valueOf(5)) <= 0) {
-            return "Moderate";
-        }
-        if (uvIndex.compareTo(BigDecimal.valueOf(7)) <= 0) {
-            return "High";
-        }
-        return "Very High";
     }
 
     record PointResponse(String locationName, String forecastUrl, String forecastHourlyUrl, String observationStationUrl) {

@@ -7,6 +7,10 @@ services:
       ZIP_LOOKUP_BASE_URL: https://api.zippopotam.us
       ZIP_LOOKUP_CONNECTION_TIMEOUT_MS: 3000
       ZIP_LOOKUP_RESPONSE_TIMEOUT_MS: 5000
+      ENVIRONMENT_OPEN_METEO_FORECAST_BASE_URL: https://api.open-meteo.com/v1/forecast
+      ENVIRONMENT_OPEN_METEO_AIR_QUALITY_BASE_URL: https://air-quality-api.open-meteo.com/v1/air-quality
+      ENVIRONMENT_OPEN_METEO_CONNECTION_TIMEOUT_MS: 3000
+      ENVIRONMENT_OPEN_METEO_RESPONSE_TIMEOUT_MS: 5000
     ports:
       - "9090:9090"
 

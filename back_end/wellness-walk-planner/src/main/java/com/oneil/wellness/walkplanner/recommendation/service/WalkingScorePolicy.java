@@ -10,19 +10,19 @@ final class WalkingScorePolicy {
     static int temperatureScore(BigDecimal temperatureFahrenheit) {
         double value = temperatureFahrenheit.doubleValue();
         if (value >= 60 && value <= 72) {
-            return 40;
+            return 30;
         }
         if ((value >= 55 && value <= 59) || (value >= 73 && value <= 78)) {
-            return 35;
+            return 26;
         }
         if (value >= 79 && value <= 84) {
-            return 25;
+            return 18;
         }
         if (value >= 45 && value <= 54) {
-            return 20;
+            return 15;
         }
         if (value >= 85 && value <= 90) {
-            return 10;
+            return 8;
         }
         return 0;
     }
@@ -33,13 +33,13 @@ final class WalkingScorePolicy {
         }
         double value = probability.doubleValue();
         if (value <= 10) {
-            return 25;
-        }
-        if (value <= 25) {
             return 20;
         }
+        if (value <= 25) {
+            return 16;
+        }
         if (value <= 50) {
-            return 10;
+            return 8;
         }
         return 0;
     }
@@ -50,13 +50,13 @@ final class WalkingScorePolicy {
         }
         double value = windSpeedMph.doubleValue();
         if (value <= 10) {
-            return 15;
-        }
-        if (value <= 15) {
             return 10;
         }
+        if (value <= 15) {
+            return 7;
+        }
         if (value <= 20) {
-            return 5;
+            return 3;
         }
         return 0;
     }
@@ -78,51 +78,50 @@ final class WalkingScorePolicy {
         return 0;
     }
 
-    static int daylightScore(Boolean isDaytime) {
-        return Boolean.TRUE.equals(isDaytime) ? 10 : 2;
-    }
-
-    static int daylightScore(Boolean isDaytime, Integer remainingDaylightMinutes) {
-        if (remainingDaylightMinutes != null) {
-            if (remainingDaylightMinutes <= 0) {
-                return 2;
-            }
-            return remainingDaylightMinutes >= 60 ? 10 : 6;
+    static int daylightScore(String daylightStatus) {
+        if ("DAYLIGHT".equals(daylightStatus)) {
+            return 10;
         }
-        return daylightScore(isDaytime);
+        if ("TWILIGHT".equals(daylightStatus)) {
+            return 5;
+        }
+        if ("NIGHT".equals(daylightStatus)) {
+            return 2;
+        }
+        return 0;
     }
 
-    static int aqiPenalty(BigDecimal aqi) {
+    static int airQualityScore(BigDecimal aqi) {
         if (aqi == null) {
             return 0;
         }
         double value = aqi.doubleValue();
         if (value <= 50) {
-            return 0;
+            return 10;
         }
         if (value <= 100) {
-            return 3;
+            return 7;
         }
         if (value <= 150) {
-            return 8;
+            return 3;
         }
-        return 15;
+        return 0;
     }
 
-    static int uvPenalty(BigDecimal uvIndex) {
+    static int uvScore(BigDecimal uvIndex) {
         if (uvIndex == null) {
             return 0;
         }
         double value = uvIndex.doubleValue();
         if (value <= 2) {
-            return 0;
+            return 10;
         }
         if (value <= 5) {
-            return 3;
+            return 7;
         }
         if (value <= 7) {
-            return 6;
+            return 3;
         }
-        return 10;
+        return 0;
     }
 }

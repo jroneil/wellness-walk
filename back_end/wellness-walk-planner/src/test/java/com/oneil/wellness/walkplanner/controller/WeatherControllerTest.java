@@ -16,6 +16,9 @@ import com.oneil.wellness.walkplanner.dto.WeatherResponse;
 import com.oneil.wellness.walkplanner.exception.WeatherServiceException;
 import com.oneil.wellness.walkplanner.recommendation.dto.BestWalkingWindowDto;
 import com.oneil.wellness.walkplanner.recommendation.dto.DailyOutlookDto;
+import com.oneil.wellness.walkplanner.recommendation.dto.PreferredTimeOfDay;
+import com.oneil.wellness.walkplanner.recommendation.dto.RecommendationPreferencesDto;
+import com.oneil.wellness.walkplanner.recommendation.dto.UnitSystem;
 import com.oneil.wellness.walkplanner.recommendation.model.WalkingRating;
 import com.oneil.wellness.walkplanner.service.WeatherService;
 import com.oneil.wellness.walkplanner.zip.service.ZipCodeNotFoundException;
@@ -49,6 +52,21 @@ class WeatherControllerTest {
         WeatherResponse result = controller.currentWeatherByZip("01830");
 
         assertThat(result).isSameAs(response);
+    }
+
+    @Test
+    void passesNormalizedPreferencesForZipWeather() {
+        WeatherResponse response = weatherResponse();
+        TestZipWeatherService service = new TestZipWeatherService(response);
+        WeatherController controller = new WeatherController(null, service);
+
+        WeatherResponse result = controller.currentWeatherByZip("01830", 45, "afternoon", "invalid", null, null, 85, "metric");
+
+        assertThat(result).isSameAs(response);
+        assertThat(service.preferences.walkDurationMinutes()).isEqualTo(45);
+        assertThat(service.preferences.preferredTimeOfDay()).isEqualTo(PreferredTimeOfDay.AFTERNOON);
+        assertThat(service.preferences.minimumScore()).isEqualTo(85);
+        assertThat(service.preferences.unitSystem()).isEqualTo(UnitSystem.METRIC);
     }
 
     @Test
@@ -134,7 +152,12 @@ class WeatherControllerTest {
                         "Great",
                         "Great weather for a restorative walk.",
                         List.of("Low chance of rain"),
-                        List.of()),
+                        List.of(),
+                        30,
+                        List.of("30-minute walk window"),
+                        60,
+                        false,
+                        null),
                 List.of(),
                 List.of(new DailyOutlookDto(
                         "2026-07-14",
@@ -172,9 +195,17 @@ class WeatherControllerTest {
 
         @Override
         public WeatherResponse getCurrentWeather(String zipCode) {
+            return getCurrentWeather(zipCode, RecommendationPreferencesDto.defaults());
+        }
+
+        private RecommendationPreferencesDto preferences;
+
+        @Override
+        public WeatherResponse getCurrentWeather(String zipCode, RecommendationPreferencesDto preferences) {
             if (exception != null) {
                 throw exception;
             }
+            this.preferences = preferences;
             return response;
         }
     }

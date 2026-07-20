@@ -233,7 +233,7 @@ class NwsWeatherClientTest {
         assertThat(result.get(0).date()).isEqualTo("2099-07-16");
         assertThat(result.get(0).highTemperature()).isEqualByComparingTo("78");
         assertThat(result.get(0).lowTemperature()).isEqualByComparingTo("62");
-        assertThat(result.get(0).representativeScore()).isEqualTo(100);
+        assertThat(result.get(0).representativeScore()).isEqualTo(70);
         assertThat(result.get(0).bestAvailableTime()).isEqualTo("2099-07-16T08:00:00-04:00");
         assertThat(result.get(1).representativeScore()).isNull();
         assertThat(result.get(1).ratingLabel()).isEqualTo("Not enough hourly data");

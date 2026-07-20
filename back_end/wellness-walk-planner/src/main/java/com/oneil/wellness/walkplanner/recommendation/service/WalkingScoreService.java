@@ -40,11 +40,11 @@ public class WalkingScoreService {
         int precipitationScore = WalkingScorePolicy.precipitationScore(period.precipitationProbability());
         int windScore = WalkingScorePolicy.windScore(period.windSpeed());
         int humidityScore = WalkingScorePolicy.humidityScore(period.humidity());
-        int daylightScore = WalkingScorePolicy.daylightScore(period.isDaytime(), period.remainingDaylightMinutes());
-        int aqiPenalty = WalkingScorePolicy.aqiPenalty(period.aqi());
-        int uvPenalty = WalkingScorePolicy.uvPenalty(period.uvIndex());
-        int total = Math.max(0, temperatureScore + precipitationScore + windScore + humidityScore + daylightScore
-                - aqiPenalty - uvPenalty);
+        int daylightScore = WalkingScorePolicy.daylightScore(period.daylightStatus());
+        int airQualityScore = WalkingScorePolicy.airQualityScore(period.aqi());
+        int uvScore = WalkingScorePolicy.uvScore(period.uvIndex());
+        int total = temperatureScore + precipitationScore + windScore + humidityScore + daylightScore
+                + airQualityScore + uvScore;
         WalkingRating rating = WalkingRating.fromScore(total);
 
         return new ScoredWalkingPeriod(
@@ -57,92 +57,114 @@ public class WalkingScoreService {
                 windScore,
                 humidityScore,
                 daylightScore,
-                aqiPenalty,
-                uvPenalty,
+                airQualityScore,
+                uvScore,
                 scoringTemperature,
-                period.feelsLikeSource(),
+                period.feelsLikeMethod(),
                 reasons(period, scoringTemperature, temperatureScore, precipitationScore, windScore, humidityScore,
-                        daylightScore, aqiPenalty, uvPenalty),
+                        daylightScore, airQualityScore, uvScore),
                 warnings(period));
     }
 
     private List<String> reasons(HourlyForecastPeriod period, BigDecimal scoringTemperature, int temperatureScore,
-            int precipitationScore, int windScore, int humidityScore, int daylightScore, int aqiPenalty,
-            int uvPenalty) {
+            int precipitationScore, int windScore, int humidityScore, int daylightScore, int airQualityScore,
+            int uvScore) {
         List<String> reasons = new ArrayList<>();
         addTemperatureReason(reasons, period, scoringTemperature, temperatureScore);
         addPrecipitationReason(reasons, period.precipitationProbability(), precipitationScore);
         addWindReason(reasons, period.windSpeed(), windScore);
         addHumidityReason(reasons, period.humidity(), humidityScore);
-        addDaylightReason(reasons, daylightScore, period.remainingDaylightMinutes());
-        addAqiReason(reasons, period.aqi(), aqiPenalty);
-        addUvReason(reasons, period.uvIndex(), uvPenalty);
+        addDaylightReason(reasons, period.daylightStatus(), daylightScore);
+        addAqiReason(reasons, period.aqi(), period.aqiCategory(), airQualityScore);
+        addUvReason(reasons, period.uvIndex(), period.uvCategory(), uvScore);
         return reasons;
     }
 
-    private void addDaylightReason(List<String> reasons, int daylightScore, Integer remainingDaylightMinutes) {
+    private void addDaylightReason(List<String> reasons, String daylightStatus, int daylightScore) {
         if (daylightScore == 10) {
-            reasons.add(remainingDaylightMinutes == null ? "Daylight available" : "Plenty of daylight remains");
-        } else if (daylightScore == 6) {
-            reasons.add("Limited daylight remains");
+            reasons.add("Full daylight");
+        } else if (daylightScore == 5) {
+            reasons.add("Civil twilight");
+        } else if (daylightScore == 2) {
+            reasons.add("Nighttime limits daylight");
+        } else if (daylightStatus == null || "UNKNOWN".equals(daylightStatus)) {
+            reasons.add("Sunrise and sunset unavailable");
         }
     }
 
     private void addTemperatureReason(List<String> reasons, HourlyForecastPeriod period, BigDecimal temperature, int score) {
-        if ("HEAT_INDEX".equals(period.feelsLikeSource())) {
-            reasons.add("Feels like " + temperature.toPlainString() + "°F due to humidity");
+        if ("HEAT_INDEX".equals(period.feelsLikeMethod())) {
+            reasons.add("Feels like " + temperature.toPlainString() + "°F because of heat and humidity");
             return;
         }
-        if ("WIND_CHILL".equals(period.feelsLikeSource())) {
-            reasons.add("Feels like " + temperature.toPlainString() + "°F due to wind chill");
+        if ("WIND_CHILL".equals(period.feelsLikeMethod())) {
+            reasons.add("Feels like " + temperature.toPlainString() + "°F because of wind chill");
             return;
         }
-        if (score == 40) {
+        if (score == 30) {
             reasons.add("Comfortable feels-like temperature");
-        } else if (score >= 25 && temperature.compareTo(BigDecimal.valueOf(72)) > 0) {
+        } else if (score >= 18 && temperature.compareTo(BigDecimal.valueOf(72)) > 0) {
             reasons.add("Still warmer than ideal");
-        } else if (score >= 20) {
+        } else if (score >= 15) {
             reasons.add("Cooler than ideal");
+        } else {
+            reasons.add("Feels-like temperature outside the preferred range");
         }
     }
 
-    private void addAqiReason(List<String> reasons, BigDecimal aqi, int penalty) {
+    private void addAqiReason(List<String> reasons, BigDecimal aqi, String category, int score) {
         if (aqi == null) {
             reasons.add("Air quality unavailable");
-        } else if (penalty == 0) {
+        } else if (score == 10) {
             reasons.add("Good air quality");
+        } else if (score == 7) {
+            reasons.add("Moderate air quality");
+        } else if (score == 3) {
+            reasons.add(category != null ? category + " air quality" : "Air quality may be unhealthy for sensitive groups");
         } else {
-            reasons.add("Air quality reduced score by " + penalty + " points");
+            reasons.add("Poor air quality");
         }
     }
 
-    private void addUvReason(List<String> reasons, BigDecimal uvIndex, int penalty) {
+    private void addUvReason(List<String> reasons, BigDecimal uvIndex, String category, int score) {
         if (uvIndex == null) {
-            reasons.add("UV index unavailable");
-        } else if (penalty == 0) {
+            reasons.add("UV data unavailable");
+        } else if (score == 10) {
             reasons.add("Low UV");
+        } else if (score == 7) {
+            reasons.add("Moderate UV exposure");
+        } else if (score == 3) {
+            reasons.add("High UV exposure");
         } else {
-            reasons.add("UV reduced score by " + penalty + " points");
+            reasons.add(category != null ? category + " UV exposure" : "Very high UV exposure");
         }
     }
 
     private void addPrecipitationReason(List<String> reasons, BigDecimal probability, int score) {
         if (probability == null) {
             reasons.add("Rain chance unavailable");
-        } else if (score == 25) {
-            reasons.add("Low chance of rain");
-        } else if (score >= 20) {
+        } else if (score == 20) {
+            reasons.add("Very low chance of rain");
+        } else if (score >= 16) {
             reasons.add("Some chance of rain");
+        } else if (score >= 8) {
+            reasons.add("Elevated rain chance");
+        } else {
+            reasons.add("Rain is likely");
         }
     }
 
     private void addWindReason(List<String> reasons, BigDecimal windSpeed, int score) {
         if (windSpeed == null) {
             reasons.add("Wind speed unavailable");
-        } else if (score == 15) {
+        } else if (score == 10) {
             reasons.add("Light wind");
-        } else if (score >= 10) {
+        } else if (score >= 7) {
             reasons.add("Moderate wind");
+        } else if (score >= 3) {
+            reasons.add("Breezy conditions");
+        } else {
+            reasons.add("Strong wind");
         }
     }
 
@@ -152,7 +174,11 @@ public class WalkingScoreService {
         } else if (score == 10) {
             reasons.add("Comfortable humidity");
         } else if (score >= 7) {
-            reasons.add("Humidity is manageable");
+            reasons.add("Moderately humid");
+        } else if (score >= 3) {
+            reasons.add("High humidity");
+        } else {
+            reasons.add("Very high humidity");
         }
     }
 
@@ -175,8 +201,12 @@ public class WalkingScoreService {
         if (period.humidity() != null && period.humidity().compareTo(BigDecimal.valueOf(85)) > 0) {
             warnings.add("Very high humidity");
         }
-        if (period.aqi() != null && period.aqi().compareTo(BigDecimal.valueOf(150)) > 0) {
+        if (period.aqi() != null && period.aqi().compareTo(BigDecimal.valueOf(300)) > 0) {
+            warnings.add("Hazardous air quality");
+        } else if (period.aqi() != null && period.aqi().compareTo(BigDecimal.valueOf(150)) > 0) {
             warnings.add("Poor air quality");
+        } else if (period.aqi() != null && period.aqi().compareTo(BigDecimal.valueOf(100)) > 0) {
+            warnings.add("Air quality may be unhealthy for sensitive groups");
         }
         if (period.uvIndex() != null && period.uvIndex().compareTo(BigDecimal.valueOf(8)) >= 0) {
             warnings.add("High UV");
@@ -184,9 +214,7 @@ public class WalkingScoreService {
         } else if (period.uvIndex() != null && period.uvIndex().compareTo(BigDecimal.valueOf(6)) >= 0) {
             warnings.add("Sun protection recommended");
         }
-        if (period.remainingDaylightMinutes() != null && period.remainingDaylightMinutes() <= 0) {
-            warnings.add("Limited daylight");
-        } else if (period.remainingDaylightMinutes() == null && !Boolean.TRUE.equals(period.isDaytime())) {
+        if ("NIGHT".equals(period.daylightStatus())) {
             warnings.add("Limited daylight");
         }
         return warnings;

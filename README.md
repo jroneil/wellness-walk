@@ -2,7 +2,7 @@
 
 Wellness Window helps a user decide when to take a short restorative walk by combining live weather, optional environmental context, calendar availability, and transparent recommendation scoring.
 
-Version 2.6 adds explicit walk tracking, recoverable active sessions, optional weekly goals, history retention/export controls, and installable PWA support. Recommendations remain deterministic; completion is never inferred, and external calendars remain read-only.
+Version 2.7 completes the walk-outcome controls, completion feedback, automatic opportunity expiry, protected history deletion, notification actions, browser-level testing, and install/update/offline PWA experience. Recommendations remain deterministic, completion is never inferred, and external calendars remain read-only.
 
 ## Problem Statement
 
@@ -31,6 +31,20 @@ Weather apps provide conditions, but they do not answer the practical question: 
 - Optional user-chosen weekly goals with supportive progress language.
 - History retention and CSV/JSON exports that exclude provider secrets.
 - Installable PWA shell with a conservative offline fallback.
+
+## Dashboard Experience
+
+The dashboard is organized around **Today’s Best Available Walk**. The recommendation card gives one primary answer—time, duration, score, availability, explanation, and Start Walk—while Skip and Dismiss remain secondary actions.
+
+Supporting information uses progressive disclosure to keep the page decision-focused:
+
+- Recommendation Comparison explains why the selected window is stronger.
+- Today’s Schedule shows calendar conflicts and the recommended slot.
+- Recommendation Timeline shows up to eight relevant hours by default, grouped into Morning, Afternoon, Evening, and Overnight where applicable. All hours and outcome actions remain available.
+- Score Breakdown, Environmental Conditions, current-weather details, and Hourly Forecast can be expanded when more context is needed.
+- Seven-Day Outlook emphasizes each day’s best score, best walking time, weather icon, and high/low temperatures. Forecast wording, precipitation, and environmental warnings remain under **More conditions**.
+
+These presentation choices do not change recommendation calculations, calendar filtering, provider behavior, or activity semantics.
 
 ## Architecture
 
@@ -73,7 +87,23 @@ compose.yaml                        Full-app Docker Compose configuration
 
 ## Screenshots
 
-No screenshots are currently committed. See `docs/screenshots/README.md` for the expected screenshot set.
+### Dashboard
+
+The dashboard centers the best available walking window, its explanation, schedule context, timeline, and supporting forecast details.
+
+<img src="docs/screenshots/dashboard.png" alt="Wellness Window dashboard showing the best available walk and supporting forecast information" width="900">
+
+### Calendar
+
+<img src="docs/screenshots/calendar.png" alt="Wellness Window calendar page with manual events and calendar provider connections" width="900">
+
+### History
+
+<img src="docs/screenshots/history.png" alt="Wellness Window history page showing recommendation and walking activity summaries" width="900">
+
+### Settings
+
+<img src="docs/screenshots/settings.png" alt="Wellness Window settings page with walking and display preferences" width="900">
 
 ## Requirements
 
@@ -498,14 +528,13 @@ Generate a local master key with `openssl rand -base64 32` and place it in `.env
 - Recommendations are not medical advice.
 - Manual calendar data is local to one browser and is not synchronized across devices.
 - CalDAV is live-tested against the repository Radicale 3.7.3 profile; compatibility with other servers is not claimed.
-- No screenshots are currently committed.
 
 ## Future Roadmap
 
 - Wider CalDAV server interoperability and durable non-secret calendar selection.
 - Workload or operational status integration.
 - Server-side user profiles if durable preferences become a real requirement.
-- Better screenshot and release documentation.
+- Additional release documentation as the product evolves.
 - Automated browser end-to-end coverage for console errors, focus management, network transitions, and OAuth navigation.
 
 ## Radicale Development Profile
@@ -545,8 +574,14 @@ AI-assisted development has been used throughout this project. Human-readable do
 - [Technology Stack](docs/technology-stack.md)
 - [Notifications](docs/notifications.md)
 - [Wellness History](docs/history.md)
+- [Walk Tracking](docs/walk-tracking.md)
+- [Data Management](docs/data-management.md)
+- [PWA](docs/pwa.md)
+- [Browser Support](docs/browser-support.md)
+- [End-to-End Testing](docs/end-to-end-testing.md)
+- [Troubleshooting](docs/troubleshooting.md)
 
-## Version 2.5: Proactive Wellness
+## Recent Version Notes
 
 Completed recommendations now create meaningful, deduplicated history snapshots in PostgreSQL. The dashboard includes a scored opportunity timeline, `/history` provides daily/weekly summaries and recommendation-change explanations, and `/settings/notifications` configures browser reminders. Notifications require explicit browser permission and are gated by score, availability, quiet hours, weekends, working hours, cooldown, and a daily limit. They use one replaceable browser timer after a completed recommendation lookup—there is no continuous polling, email, SMS, remote push, or duplicated scoring logic.
 

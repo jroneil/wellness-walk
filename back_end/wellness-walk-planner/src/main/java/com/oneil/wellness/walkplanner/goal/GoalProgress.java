@@ -1,0 +1,1 @@
+package com.oneil.wellness.walkplanner.goal;public record GoalProgress(boolean enabled,int completedWalks,Integer walkTarget,int walkingMinutes,Integer minutesTarget,int remainingMinutes,int activeDays,Double averageDuration,String mostCommonPeriod){}

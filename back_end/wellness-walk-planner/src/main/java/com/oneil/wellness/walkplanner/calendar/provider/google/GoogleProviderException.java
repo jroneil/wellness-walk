@@ -1,0 +1,2 @@
+package com.oneil.wellness.walkplanner.calendar.provider.google;
+public class GoogleProviderException extends RuntimeException{private final String code;private final boolean authorizationRequired;public GoogleProviderException(String code,String message){this(code,message,false);}public GoogleProviderException(String code,String message,boolean auth){super(message);this.code=code;authorizationRequired=auth;}public String getCode(){return code;}public boolean isAuthorizationRequired(){return authorizationRequired;}}

@@ -24,6 +24,7 @@ import org.springframework.stereotype.Component;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.oneil.wellness.walkplanner.calendar.model.CalendarEvent;
 import com.oneil.wellness.walkplanner.config.WeatherNwsProperties;
 import com.oneil.wellness.walkplanner.dto.CurrentWeatherSummary;
 import com.oneil.wellness.walkplanner.dto.HourlyForecastPeriod;
@@ -74,6 +75,14 @@ public class NwsWeatherClient {
     }
 
     public WeatherResponse fetchCurrentWeather(BigDecimal latitude, BigDecimal longitude, RecommendationPreferencesDto preferences) {
+        return fetchCurrentWeather(latitude, longitude, preferences, List.of());
+    }
+
+    public WeatherResponse fetchCurrentWeather(
+            BigDecimal latitude,
+            BigDecimal longitude,
+            RecommendationPreferencesDto preferences,
+            List<CalendarEvent> calendarEvents) {
         RecommendationPreferencesDto normalizedPreferences = preferences == null
                 ? RecommendationPreferencesDto.defaults()
                 : preferences.normalized();
@@ -94,7 +103,7 @@ public class NwsWeatherClient {
             CurrentWeatherSummary current = buildCurrentWeatherSummary(observation, hourlyPeriods);
 
             return buildPublicWeatherResponse(locationName, latitude, longitude, hourlyPeriods, weeklyOutlook, dataType, current,
-                    normalizedPreferences);
+                    normalizedPreferences, calendarEvents);
         } catch (WeatherServiceException ex) {
             throw ex;
         } catch (Exception ex) {
@@ -112,6 +121,13 @@ public class NwsWeatherClient {
     WeatherResponse buildPublicWeatherResponse(String locationName, BigDecimal latitude, BigDecimal longitude,
             List<HourlyForecastPeriod> hourlyPeriods, List<DailyOutlookDto> weeklyOutlook, String dataType,
             CurrentWeatherSummary current, RecommendationPreferencesDto preferences) {
+        return buildPublicWeatherResponse(locationName, latitude, longitude, hourlyPeriods, weeklyOutlook, dataType, current,
+                preferences, List.of());
+    }
+
+    WeatherResponse buildPublicWeatherResponse(String locationName, BigDecimal latitude, BigDecimal longitude,
+            List<HourlyForecastPeriod> hourlyPeriods, List<DailyOutlookDto> weeklyOutlook, String dataType,
+            CurrentWeatherSummary current, RecommendationPreferencesDto preferences, List<CalendarEvent> calendarEvents) {
         CurrentWeatherSummary summary = current != null ? current : buildCurrentWeatherSummary(Optional.empty(), hourlyPeriods);
         List<HourlyForecastPeriod> visibleHourlyPeriods = hourlyPeriods.stream().limit(12).toList();
         return new WeatherResponse(
@@ -121,7 +137,8 @@ public class NwsWeatherClient {
                 summary,
                 environmentalConditions(summary, visibleHourlyPeriods),
                 walkingRecommendationService.bestWindow(visibleHourlyPeriods,
-                        preferences == null ? RecommendationPreferencesDto.defaults() : preferences.normalized()),
+                        preferences == null ? RecommendationPreferencesDto.defaults() : preferences.normalized(),
+                        calendarEvents),
                 visibleHourlyPeriods,
                 weeklyOutlook);
     }

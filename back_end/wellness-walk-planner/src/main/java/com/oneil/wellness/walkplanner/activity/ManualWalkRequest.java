@@ -1,0 +1,1 @@
+package com.oneil.wellness.walkplanner.activity; import java.time.OffsetDateTime; public record ManualWalkRequest(OffsetDateTime actualStart,Integer durationMinutes,PerceivedQuality perceivedQuality,String notes){}

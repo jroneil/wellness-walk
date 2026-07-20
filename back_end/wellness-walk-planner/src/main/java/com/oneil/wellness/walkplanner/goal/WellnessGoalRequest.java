@@ -1,0 +1,1 @@
+package com.oneil.wellness.walkplanner.goal;import java.time.DayOfWeek;public record WellnessGoalRequest(boolean enabled,Integer weeklyMinutesTarget,Integer weeklyWalkCountTarget,Integer minimumQualifyingMinutes,DayOfWeek weekStartsOn,String timezone){}

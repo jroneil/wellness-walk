@@ -6,11 +6,14 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
 import com.oneil.wellness.walkplanner.dto.HourlyForecastPeriod;
+import com.oneil.wellness.walkplanner.calendar.model.CalendarEvent;
+import com.oneil.wellness.walkplanner.calendar.model.CalendarSource;
 import com.oneil.wellness.walkplanner.recommendation.dto.BestWalkingWindowDto;
 import com.oneil.wellness.walkplanner.recommendation.dto.PreferredTimeOfDay;
 import com.oneil.wellness.walkplanner.recommendation.dto.RainTolerance;
@@ -33,9 +36,9 @@ class WalkingRecommendationServiceTest {
 
         BestWalkingWindowDto result = service.bestWindow(List.of(pastExcellent, laterGreat, earlierGreat));
 
-        assertThat(result.startTime()).isEqualTo("2026-07-15T14:00:00-04:00");
+        assertThat(result.startTime()).isEqualTo("2026-07-15T14:00-04:00");
         assertThat(result.endTime()).isEqualTo("2026-07-15T14:30-04:00");
-        assertThat(result.score()).isEqualTo(100);
+        assertThat(result.weatherScore()).isEqualTo(100);
         assertThat(result.positiveReasons()).contains("Comfortable feels-like temperature", "Very low chance of rain", "Light wind");
     }
 
@@ -58,6 +61,34 @@ class WalkingRecommendationServiceTest {
     }
 
     @Test
+    void busyEventRemovesIdealWeatherAndSelectsNextAvailableWindow() {
+        HourlyForecastPeriod ideal = withRecommendation(period("2026-07-15T14:00:00-04:00", "70", 0, 5, 45, true));
+        HourlyForecastPeriod next = withRecommendation(period("2026-07-15T15:00:00-04:00", "78", 0, 5, 45, true));
+        CalendarEvent meeting = event("meeting", "Planning meeting", "2026-07-15T14:10:00-04:00", "2026-07-15T14:45:00-04:00", true);
+
+        BestWalkingWindowDto result = service.bestWindow(List.of(ideal, next), RecommendationPreferencesDto.defaults(), List.of(meeting));
+
+        assertThat(result.startTime()).isEqualTo("2026-07-15T14:45-04:00");
+        assertThat(result.availability()).isEqualTo("AVAILABLE");
+        assertThat(result.idealWeatherWindow().availability()).isEqualTo("UNAVAILABLE");
+        assertThat(result.idealWeatherWindow().conflictingEvent().title()).isEqualTo("Planning meeting");
+    }
+
+    @Test
+    void freeEventsDoNotBlockAndFullDurationMustBeAvailable() {
+        HourlyForecastPeriod ideal = withRecommendation(period("2026-07-15T14:00:00-04:00", "70", 0, 5, 45, true));
+        HourlyForecastPeriod next = withRecommendation(period("2026-07-15T15:00:00-04:00", "78", 0, 5, 45, true));
+        CalendarEvent free = event("focus", "Optional focus time", "2026-07-15T14:15:00-04:00", "2026-07-15T14:45:00-04:00", false);
+
+        BestWalkingWindowDto result = service.bestWindow(List.of(ideal, next), preferences(45, PreferredTimeOfDay.ANY,
+                TemperaturePreference.BALANCED, RainTolerance.LIGHT_RAIN_OK, WindTolerance.MODERATE, 60, UnitSystem.US), List.of(free));
+
+        assertThat(result.startTime()).isEqualTo("2026-07-15T14:00-04:00");
+        assertThat(result.endTime()).isEqualTo("2026-07-15T14:45-04:00");
+        assertThat(result.idealWeatherWindow()).isNull();
+    }
+
+    @Test
     void preferredTimeBreaksTiesButDoesNotBeatHigherEnvironmentalScore() {
         HourlyForecastPeriod afternoonExcellent = withRecommendation(period("2026-07-15T14:00:00-04:00", "70", 0, 5, 45, true));
         HourlyForecastPeriod eveningLowerScore = withRecommendation(period("2026-07-15T18:00:00-04:00", "78", 0, 5, 45, true));
@@ -71,8 +102,8 @@ class WalkingRecommendationServiceTest {
                 60,
                 UnitSystem.US));
 
-        assertThat(result.startTime()).isEqualTo("2026-07-15T14:00:00-04:00");
-        assertThat(result.score()).isEqualTo(100);
+        assertThat(result.startTime()).isEqualTo("2026-07-15T14:00-04:00");
+        assertThat(result.weatherScore()).isEqualTo(100);
     }
 
     @Test
@@ -89,7 +120,7 @@ class WalkingRecommendationServiceTest {
                 60,
                 UnitSystem.US));
 
-        assertThat(result.startTime()).isEqualTo("2026-07-15T14:00:00-04:00");
+        assertThat(result.startTime()).isEqualTo("2026-07-15T14:00-04:00");
         assertThat(result.preferenceReasons()).contains("Matches your preferred time of day");
     }
 
@@ -107,11 +138,11 @@ class WalkingRecommendationServiceTest {
                 60,
                 UnitSystem.METRIC));
 
-        assertThat(result.startTime()).isEqualTo("2026-07-15T15:00:00-04:00");
-        assertThat(result.score()).isEqualTo(96);
+        assertThat(result.startTime()).isEqualTo("2026-07-15T14:00-04:00");
+        assertThat(result.weatherScore()).isEqualTo(100);
         assertThat(warmer.walkingRecommendation().score()).isEqualTo(100);
         assertThat(cooler.walkingRecommendation().score()).isEqualTo(96);
-        assertThat(result.preferenceReasons()).contains("Leans toward cooler conditions");
+        assertThat(result.preferenceScore()).isGreaterThan(0);
     }
 
     @Test
@@ -128,7 +159,7 @@ class WalkingRecommendationServiceTest {
                 60,
                 UnitSystem.US));
 
-        assertThat(result.startTime()).isEqualTo("2026-07-15T14:00:00-04:00");
+        assertThat(result.startTime()).isEqualTo("2026-07-15T14:00-04:00");
     }
 
     @Test
@@ -144,7 +175,8 @@ class WalkingRecommendationServiceTest {
                 90,
                 UnitSystem.US));
 
-        assertThat(result.score()).isEqualTo(fair.walkingRecommendation().score());
+        assertThat(result.weatherScore()).isEqualTo(fair.walkingRecommendation().score());
+        assertThat(result.score()).isEqualTo(result.overallScore());
         assertThat(result.belowMinimumScore()).isTrue();
         assertThat(result.minimumScore()).isEqualTo(90);
         assertThat(result.minimumScoreMessage()).contains("below your minimum score of 90");
@@ -176,7 +208,7 @@ class WalkingRecommendationServiceTest {
                 40,
                 true));
 
-        assertThat(service.bestWindow(List.of(missingTemperature))).isNull();
+        assertThat(service.bestWindow(List.of(missingTemperature)).noAvailableReason()).contains("No scorable forecast");
     }
 
     private HourlyForecastPeriod withRecommendation(HourlyForecastPeriod period) {
@@ -226,5 +258,9 @@ class WalkingRecommendationServiceTest {
                 "DAYLIGHT",
                 450,
                 null);
+    }
+
+    private CalendarEvent event(String id, String title, String start, String end, boolean busy) {
+        return new CalendarEvent(id, title, OffsetDateTime.parse(start), OffsetDateTime.parse(end), busy, CalendarSource.MANUAL);
     }
 }

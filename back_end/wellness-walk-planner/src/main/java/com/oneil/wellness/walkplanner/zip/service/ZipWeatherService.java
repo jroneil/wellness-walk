@@ -2,6 +2,9 @@ package com.oneil.wellness.walkplanner.zip.service;
 
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
+import com.oneil.wellness.walkplanner.calendar.model.CalendarEvent;
 import com.oneil.wellness.walkplanner.dto.WeatherResponse;
 import com.oneil.wellness.walkplanner.recommendation.dto.RecommendationPreferencesDto;
 import com.oneil.wellness.walkplanner.service.WeatherService;
@@ -25,5 +28,11 @@ public class ZipWeatherService {
     public WeatherResponse getCurrentWeather(String zipCode, RecommendationPreferencesDto preferences) {
         ZipCoordinates coordinates = zipLookupClient.lookup(zipCode);
         return weatherService.getCurrentWeather(coordinates.latitude(), coordinates.longitude(), preferences);
+    }
+
+    public WeatherResponse getCurrentWeather(String zipCode, RecommendationPreferencesDto preferences,
+            List<CalendarEvent> calendarEvents) {
+        ZipCoordinates coordinates = zipLookupClient.lookup(zipCode);
+        return weatherService.getCurrentWeather(coordinates.latitude(), coordinates.longitude(), preferences, calendarEvents);
     }
 }

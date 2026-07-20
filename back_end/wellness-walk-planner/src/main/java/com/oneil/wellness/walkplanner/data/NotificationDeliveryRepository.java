@@ -1,0 +1,1 @@
+package com.oneil.wellness.walkplanner.data;import java.time.Instant;import java.util.*;import org.springframework.data.jpa.repository.JpaRepository;public interface NotificationDeliveryRepository extends JpaRepository<NotificationDelivery,UUID>{List<NotificationDelivery> findTop500ByDeliveredAtBeforeOrderByDeliveredAtAsc(Instant cutoff);}

@@ -1,0 +1,1 @@
+package com.oneil.wellness.walkplanner.activity; import java.time.OffsetDateTime;import java.util.UUID; public record WalkRequest(UUID recommendationHistoryId,OffsetDateTime opportunityStart,OffsetDateTime opportunityEnd,ActivitySource source){}

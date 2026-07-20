@@ -15,8 +15,10 @@ Existing Frontend
 - Tailwind CSS
 
 Database
-- None active
-- PostgreSQL can be added later when a real persistence requirement exists
+- PostgreSQL 17 for Docker/development
+- Flyway versioned migrations
+- Spring Data JPA repositories
+- H2 PostgreSQL mode for deterministic tests
 
 Requirements
 

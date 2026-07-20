@@ -1,0 +1,12 @@
+package com.oneil.wellness.walkplanner.notification;
+import static org.junit.jupiter.api.Assertions.*;import java.time.*;import java.util.List;import org.junit.jupiter.api.Test;import com.oneil.wellness.walkplanner.history.RecommendationSnapshot;
+class NotificationServiceTest{
+ private final NotificationService service=new NotificationService(new NotificationScheduler());
+ private final Instant now=Instant.parse("2026-07-20T14:00:00Z");
+ @Test void schedulesOnlyAvailableHighScoreOpportunityAtLeadTime(){var result=service.evaluate(request(snapshot(92,true),preferences(),null,0));assertTrue(result.eligible());assertEquals(Instant.parse("2026-07-20T14:15:00Z"),result.scheduleAt());assertTrue(result.body().contains("Score: 92"));}
+ @Test void rejectsScoreCalendarCooldownAndDailyLimit(){assertFalse(service.evaluate(request(snapshot(79,true),preferences(),null,0)).eligible());assertFalse(service.evaluate(request(snapshot(92,false),preferences(),null,0)).eligible());assertFalse(service.evaluate(request(snapshot(92,true),preferences(),now.minusSeconds(60),0)).eligible());assertFalse(service.evaluate(request(snapshot(92,true),preferences(),null,3)).eligible());}
+ @Test void respectsQuietHoursAndWeekendPreference(){var quiet=new NotificationPreferences(true,15,80,true,LocalTime.of(14,0),LocalTime.of(15,0),true,false,3,60);assertFalse(service.evaluate(request(snapshot(92,true),quiet,null,0)).eligible());var weekdays=new NotificationPreferences(true,15,80,false,null,null,false,false,3,60);var weekendSnapshot=new RecommendationSnapshot(Instant.parse("2026-07-18T14:00:00Z"),92,OffsetDateTime.parse("2026-07-18T14:30:00Z"),OffsetDateTime.parse("2026-07-18T15:00:00Z"),71d,5d,45d,20d,2d,true,List.of("MANUAL"),"Good weather.");var saturday=new NotificationEvaluationRequest(weekendSnapshot,weekdays,Instant.parse("2026-07-18T14:00:00Z"),null,0,"UTC");assertFalse(service.evaluate(saturday).eligible());}
+ private NotificationEvaluationRequest request(RecommendationSnapshot value,NotificationPreferences p,Instant last,int count){return new NotificationEvaluationRequest(value,p,now,last,count,"UTC");}
+ private NotificationPreferences preferences(){return new NotificationPreferences(true,15,80,false,null,null,true,false,3,60);}
+ private RecommendationSnapshot snapshot(int score,boolean available){return new RecommendationSnapshot(now,score,OffsetDateTime.parse("2026-07-20T14:30:00Z"),OffsetDateTime.parse("2026-07-20T15:00:00Z"),71d,5d,45d,20d,2d,available,List.of("MANUAL"),"Temperature ideal. Wind light.");}
+}

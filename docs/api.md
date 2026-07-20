@@ -6,6 +6,34 @@ Base URL for local backend development:
 http://localhost:9090
 ```
 
+## Version 2.6 Activity and Data APIs
+
+```http
+POST /api/walks/start
+POST /api/walks/{id}/complete
+POST /api/walks/{id}/cancel
+POST /api/walks/manual
+GET /api/walks
+GET /api/walks/active
+DELETE /api/walks/{id}
+POST /api/opportunities/{recommendationHistoryId}/skip
+POST /api/opportunities/{recommendationHistoryId}/dismiss
+GET|PUT /api/settings/wellness-goals
+GET /api/settings/wellness-goals/progress
+GET|PUT /api/settings/history-retention
+DELETE /api/history/recommendations?from=YYYY-MM-DD&to=YYYY-MM-DD&timezone=UTC
+DELETE /api/history/notifications
+DELETE /api/history/activities
+DELETE /api/history/all
+GET /api/history/export/activities.csv
+GET /api/history/export/recommendations.csv
+GET /api/history/export/daily-summary.csv
+GET /api/history/export/all.json
+```
+
+Exports set attachment filenames and `Cache-Control: no-store`. They never contain
+provider credentials, tokens, passwords, or encryption metadata.
+
 ## Health
 
 ```http
@@ -22,6 +50,22 @@ Example response:
   "developmentStage": "local"
 }
 ```
+
+## Version 2.7 activity and data endpoints
+
+```http
+POST /api/walks/start
+POST /api/walks/{id}/complete
+POST /api/walks/{id}/cancel
+POST /api/opportunities/skip
+POST /api/opportunities/dismiss
+DELETE /api/history/recommendations?from=YYYY-MM-DD&to=YYYY-MM-DD&timezone=Area/City
+DELETE /api/history/notifications
+DELETE /api/history/activities
+DELETE /api/history/all
+```
+
+The window-based skip/dismiss requests accept `opportunityStart` and a constrained source. Duplicate explicit outcomes are rejected. Completion accepts positive duration (maximum 480), completion status, optional perceived quality, and notes (maximum 1,000). History deletion is installation-wide but never deletes calendar-provider configuration or encrypted provider credentials.
 
 ## Weather By ZIP
 
@@ -46,7 +90,7 @@ GET /api/weather/current/01830?walkDurationMinutes=30&preferredTimeOfDay=AFTERNO
 | Parameter | Values | Default |
 | --- | --- | --- |
 | `walkDurationMinutes` | `10`, `15`, `20`, `30`, `45`, `60` | `30` |
-| `preferredTimeOfDay` | `ANY`, `MORNING`, `AFTERNOON`, `EVENING` | `ANY` |
+| `preferredTimeOfDay` | `ANY`, `MORNING`, `LUNCH`, `AFTERNOON`, `EVENING` | `ANY` |
 | `temperaturePreference` | `COOLER`, `BALANCED`, `WARMER` | `BALANCED` |
 | `rainTolerance` | `AVOID_RAIN`, `LIGHT_RAIN_OK`, `RAIN_OK` | `LIGHT_RAIN_OK` |
 | `windTolerance` | `LOW`, `MODERATE`, `HIGH` | `MODERATE` |
@@ -54,6 +98,64 @@ GET /api/weather/current/01830?walkDurationMinutes=30&preferredTimeOfDay=AFTERNO
 | `unitSystem` | `US`, `METRIC` | `US` |
 
 Invalid optional preference values are normalized to defaults. The backend keeps scoring in canonical Fahrenheit and mph values; the frontend handles metric display.
+
+## Availability-Aware Recommendation
+
+```http
+POST /api/weather/current/{zipCode}/recommendation
+Content-Type: application/json
+```
+
+The Version 2 frontend uses this additive endpoint. The existing GET endpoint remains compatible and behaves as though the calendar is empty.
+
+```json
+{
+  "preferences": {
+    "walkDurationMinutes": 30,
+    "preferredTimeOfDay": "ANY",
+    "temperaturePreference": "BALANCED",
+    "rainTolerance": "LIGHT_RAIN_OK",
+    "windTolerance": "MODERATE",
+    "minimumScore": 60,
+    "unitSystem": "US"
+  },
+  "calendarEvents": [
+    {
+      "id": "event-1",
+      "title": "Planning meeting",
+      "startTime": "2026-07-15T19:00:00-04:00",
+      "endTime": "2026-07-15T19:30:00-04:00",
+      "busy": true,
+      "source": "MANUAL"
+    }
+  ]
+}
+```
+
+Supported sources are `MANUAL`, `CALDAV`, `GOOGLE`, and `MICROSOFT`; Version 2.2 creates only Manual and CalDAV events.
+
+## Calendar Providers
+
+```http
+GET /api/calendar/providers
+GET /api/calendar/providers/{type}/status
+POST /api/calendar/providers/{type}/test
+POST /api/calendar/providers/{type}/disconnect
+POST /api/calendar/sync
+POST /api/calendar/providers/{type}/discover
+GET /api/calendar/providers/{type}/calendars
+PUT /api/calendar/providers/{type}/calendars/selection
+POST /api/calendar/providers/{type}/sync
+GET /api/calendar/providers/{type}/sync-status
+GET /api/calendar/providers/{type}/oauth/start
+GET /api/calendar/providers/{type}/oauth/callback
+POST /api/calendar/providers/{type}/revoke
+```
+
+Provider status responses explicitly expose `installationConfigured`, `enabled`, `connected`, `authorizationRequired`, `selectedCalendarCount`, `discoveredCalendarCount`, `lastSuccessfulSyncAt`, `lastAttemptedSyncAt`, `providerStatus`, `safeMessage`, and capabilities. The compatibility `status` field mirrors `providerStatus`. Credentials are never returned. Sync accepts bounded `start`, `end`, and optional `manualEvents`, then returns normalized events, sanitized errors, and `synchronizedAt`. Provider failure can therefore return Manual events plus an error.
+
+Discovery returns provider-neutral calendar descriptors. Selection requests contain only `calendarIds` and persist in PostgreSQL. Sync responses include per-calendar success/failure details. CalDAV errors use structured `providerType`, `code`, `message`, and `timestamp` responses without XML, URLs containing credentials, or server stack traces.
+Selections are durable in Version 2.4. OAuth start returns only an authorization URL and expiry. The callback validates state, exchanges the code backend-side, and redirects to a fixed frontend result route. APIs never return access tokens, refresh tokens, client secrets, ciphertext, authorization headers, or raw provider payloads. Google failures use the same structured provider error envelope.
 
 ## Weather Response Shape
 
@@ -116,7 +218,7 @@ Environmental fields may be `null` or `"Unavailable"` when optional provider dat
 {
   "startTime": "2026-07-15T19:00:00-04:00",
   "endTime": "2026-07-15T19:45-04:00",
-  "score": 85,
+  "score": 88,
   "rating": "GREAT",
   "ratingLabel": "Great",
   "summary": "Great weather for a restorative walk.",
@@ -126,7 +228,29 @@ Environmental fields may be `null` or `"Unavailable"` when optional provider dat
   "preferenceReasons": ["45-minute walk window", "Fits your rain tolerance"],
   "minimumScore": 85,
   "belowMinimumScore": false,
-  "minimumScoreMessage": null
+  "minimumScoreMessage": null,
+  "availability": "AVAILABLE",
+  "selectionReason": "Highest available weather score after a calendar conflict.",
+  "conflictingEvent": null,
+  "idealWeatherWindow": {
+    "startTime": "2026-07-15T19:00:00-04:00",
+    "endTime": "2026-07-15T19:45:00-04:00",
+    "score": 87,
+    "availability": "UNAVAILABLE",
+    "conflictingEvent": {
+      "eventId": "event-1",
+      "title": "Planning meeting",
+      "startTime": "2026-07-15T19:00:00-04:00",
+      "endTime": "2026-07-15T19:30:00-04:00",
+      "source": "MANUAL"
+    }
+  },
+  "weatherScore": 84,
+  "availabilityScore": 100,
+  "preferenceScore": 75,
+  "overallScore": 88,
+  "calendarReasons": ["Selected window is fully available"],
+  "noAvailableReason": null
 }
 ```
 
@@ -187,6 +311,16 @@ Weekly cards use NWS daily forecast data plus representative hourly scores when 
   "environmentalWarnings": []
 }
 ```
+
+## Wellness History and Notifications
+
+```http
+POST /api/wellness/history
+GET /api/wellness/history
+POST /api/wellness/notifications/evaluate
+```
+
+History accepts a completed provider-neutral `RecommendationSnapshot` and returns the stored snapshot. Near-identical calculations are not inserted. The history response includes snapshots, today/week summaries, and the latest significant comparison. Notification evaluation accepts a snapshot, notification preferences, daily delivery count, and last-delivery time; it returns `eligible`, `scheduleAt`, an explanatory reason, and safe notification copy. Neither endpoint recalculates recommendation scores or exposes calendar provider internals.
 
 ## Error Responses
 

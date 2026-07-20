@@ -10,6 +10,27 @@ Build an enterprise-quality decision support application that recommends the opt
 
 The implementation follows an incremental, test-driven approach where every phase results in a working application.
 
+## Version 2.2 Calendar Provider Phase
+
+The frontend is normal monorepo content. Calendar integration uses a unique provider registry, an always-available Manual provider, opt-in read-only CalDAV, bounded synchronization, provider-aware identity, and partial-failure fallback. Radicale is the reference server. Credentials are environment-only; no database, scheduler, OAuth, or external event editing is introduced.
+
+## Version 2.3 CalDAV Interoperability Phase
+
+CalDAV now follows principal → calendar-home → collection discovery, permits explicit multi-calendar selection, uses ical4j for bounded RFC recurrence processing, and includes a development-only Radicale 3.7.3 profile. Unit tests remain network-free; live tests run only under the `caldav-integration` Maven profile.
+
+## Version 2.4 Durable Google Provider Phase
+
+PostgreSQL and Flyway now own durable external-provider metadata and calendar selections. AES-256-GCM protects CalDAV credentials and Google OAuth tokens through `ProviderCredentialStore`. Google uses backend Authorization Code + PKCE, the minimum calendar-list/events read-only scopes, provider-expanded recurring instances, and normalized `CalendarEvent` output. Manual events remain device-local.
+
+## Version 2.6 Activity and Data Phase
+
+Flyway V3 adds explicit walk activities, opportunity outcomes, optional goals,
+retention settings, and notification-delivery history. Backend services own
+validation, progress, bounded cleanup, deletion boundaries, and export schemas.
+The Next.js frontend adds active-session recovery, manual entry, activity history,
+goal/data controls, manifest/service-worker registration, and an offline fallback.
+Recommendation scoring and provider behavior remain unchanged.
+
 ---
 
 # Development Principles
@@ -644,4 +665,17 @@ The application is complete when:
 * Mock services can be replaced with real integrations without changing the UI or recommendation engine.
 * The project includes a complete set of documentation (PRD, Architecture, Implementation Plan, README) and can be demonstrated end-to-end.
 
+## Version 2.5 Implementation
+
+1. Persist meaningful `RecommendationSnapshot` changes through Flyway/JPA.
+2. Generate daily/weekly summaries and significant comparisons from persisted snapshots.
+3. Evaluate notification eligibility through `NotificationService` without recalculating scores.
+4. Schedule a single replaceable browser timer after recommendation refresh.
+5. Add notification preferences, permission handling, `/history`, and `/timeline`.
+6. Preserve Manual, CalDAV, Google, and weather behavior through regression tests and Docker validation.
+
 This implementation plan also gives your friend a strong story during a review: it shows they approached the assignment like an engineering project—with planning, modular design, incremental delivery, and clear separation of concerns—rather than simply writing code until it worked.
+
+## Version 2.7
+
+The completion phase adds state-aware walk controls, structured completion feedback, automatic expiry, explicit deletion dialogs, browser notification intents, dedicated PWA icons, install/update/offline UI, and one Playwright suite. It reuses the V3 schema and adds no migration or provider.

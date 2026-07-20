@@ -1,4 +1,18 @@
 services:
+  postgres:
+    image: postgres:17.5-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-wellness}
+      POSTGRES_USER: ${POSTGRES_USER:-wellness}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wellness-dev-only}
+    volumes:
+      - wellness-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   backend:
     build:
       context: ./back_end/wellness-walk-planner
@@ -11,8 +25,33 @@ services:
       ENVIRONMENT_OPEN_METEO_AIR_QUALITY_BASE_URL: https://air-quality-api.open-meteo.com/v1/air-quality
       ENVIRONMENT_OPEN_METEO_CONNECTION_TIMEOUT_MS: 3000
       ENVIRONMENT_OPEN_METEO_RESPONSE_TIMEOUT_MS: 5000
+      CALDAV_ENABLED: ${CALDAV_ENABLED:-false}
+      CALDAV_SERVER_URL: ${CALDAV_SERVER_URL:-}
+      CALDAV_USERNAME: ${CALDAV_USERNAME:-}
+      CALDAV_PASSWORD: ${CALDAV_PASSWORD:-}
+      CALDAV_CALENDAR_PATH: ${CALDAV_CALENDAR_PATH:-}
+      CALDAV_CALENDAR_IDS: ${CALDAV_CALENDAR_IDS:-}
+      CALDAV_DEFAULT_TIMEZONE: ${CALDAV_DEFAULT_TIMEZONE:-UTC}
+      CALDAV_LOOKAHEAD_DAYS: ${CALDAV_LOOKAHEAD_DAYS:-7}
+      CALDAV_MAX_OCCURRENCES_PER_EVENT: ${CALDAV_MAX_OCCURRENCES_PER_EVENT:-500}
+      CALDAV_MAX_EVENTS_PER_CALENDAR: ${CALDAV_MAX_EVENTS_PER_CALENDAR:-2000}
+      CALDAV_MAX_RESPONSE_BYTES: ${CALDAV_MAX_RESPONSE_BYTES:-2000000}
+      CALDAV_MAX_EXPANSION_DAYS: ${CALDAV_MAX_EXPANSION_DAYS:-31}
+      CALDAV_CONNECTION_TIMEOUT: ${CALDAV_CONNECTION_TIMEOUT:-3s}
+      CALDAV_READ_TIMEOUT: ${CALDAV_READ_TIMEOUT:-5s}
+      DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-wellness}
+      DATABASE_USERNAME: ${POSTGRES_USER:-wellness}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-wellness-dev-only}
+      PROVIDER_CREDENTIAL_MASTER_KEY: ${PROVIDER_CREDENTIAL_MASTER_KEY:-}
+      GOOGLE_CALENDAR_ENABLED: ${GOOGLE_CALENDAR_ENABLED:-false}
+      GOOGLE_CALENDAR_CLIENT_ID: ${GOOGLE_CALENDAR_CLIENT_ID:-}
+      GOOGLE_CALENDAR_CLIENT_SECRET: ${GOOGLE_CALENDAR_CLIENT_SECRET:-}
+      GOOGLE_CALENDAR_REDIRECT_URI: ${GOOGLE_CALENDAR_REDIRECT_URI:-http://localhost:9090/api/calendar/providers/GOOGLE/oauth/callback}
     ports:
       - "9090:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   frontend:
     build:
@@ -26,3 +65,31 @@ services:
       - "3000:3000"
     depends_on:
       - backend
+
+  radicale:
+    # Enable with --profile caldav-dev after setting the root .env CalDAV values.
+    # The existing backend connects to http://radicale:5232/; no second backend is used.
+    profiles: ["caldav-dev"]
+    build:
+      context: ./docker/radicale
+    ports:
+      - "5232:5232"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--user", "wellness:wellness-dev-only", "-X", "PROPFIND", "-H", "Depth: 0", "http://localhost:5232/"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  radicale-provision:
+    profiles: ["caldav-dev"]
+    image: curlimages/curl:8.16.0
+    depends_on:
+      radicale:
+        condition: service_healthy
+    volumes:
+      - ./docker/radicale/provision.sh:/provision.sh:ro
+      - ./docker/radicale/fixtures:/fixtures:ro
+    entrypoint: ["/bin/sh", "/provision.sh"]
+
+volumes:
+  wellness-postgres-data:

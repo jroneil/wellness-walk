@@ -11,6 +11,11 @@ import com.oneil.wellness.walkplanner.dto.ApplicationErrorResponse;
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
+    @ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
+    public ResponseEntity<ApplicationErrorResponse> handleDomain(RuntimeException exception) {
+        return ResponseEntity.badRequest().body(new ApplicationErrorResponse(400, "Bad Request", exception.getMessage()));
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ApplicationErrorResponse> handleResponseStatusException(ResponseStatusException ex) {
         HttpStatus status = HttpStatus.valueOf(ex.getStatusCode().value());

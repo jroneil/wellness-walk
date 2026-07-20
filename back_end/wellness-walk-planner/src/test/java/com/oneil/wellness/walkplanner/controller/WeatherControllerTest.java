@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.time.OffsetDateTime;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,9 +13,12 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oneil.wellness.walkplanner.dto.CurrentWeatherSummary;
+import com.oneil.wellness.walkplanner.calendar.model.CalendarEvent;
+import com.oneil.wellness.walkplanner.calendar.model.CalendarSource;
 import com.oneil.wellness.walkplanner.dto.WeatherResponse;
 import com.oneil.wellness.walkplanner.exception.WeatherServiceException;
 import com.oneil.wellness.walkplanner.recommendation.dto.BestWalkingWindowDto;
+import com.oneil.wellness.walkplanner.recommendation.dto.CalendarRecommendationRequest;
 import com.oneil.wellness.walkplanner.recommendation.dto.DailyOutlookDto;
 import com.oneil.wellness.walkplanner.recommendation.dto.PreferredTimeOfDay;
 import com.oneil.wellness.walkplanner.recommendation.dto.RecommendationPreferencesDto;
@@ -67,6 +71,27 @@ class WeatherControllerTest {
         assertThat(service.preferences.preferredTimeOfDay()).isEqualTo(PreferredTimeOfDay.AFTERNOON);
         assertThat(service.preferences.minimumScore()).isEqualTo(85);
         assertThat(service.preferences.unitSystem()).isEqualTo(UnitSystem.METRIC);
+    }
+
+    @Test
+    void calendarRecommendationPassesEventsToZipWeatherService() {
+        TestZipWeatherService service = new TestZipWeatherService(weatherResponse());
+        WeatherController controller = new WeatherController(null, service);
+        CalendarEvent meeting = new CalendarEvent(
+                "meeting-1",
+                "Planning meeting",
+                OffsetDateTime.parse("2026-07-15T14:00:00-04:00"),
+                OffsetDateTime.parse("2026-07-15T14:30:00-04:00"),
+                true,
+                CalendarSource.MANUAL);
+
+        WeatherResponse result = controller.currentWeatherByZipWithCalendar(
+                "01830",
+                new CalendarRecommendationRequest(null, List.of(meeting)));
+
+        assertThat(result).isSameAs(service.response);
+        assertThat(service.calendarEvents).containsExactly(meeting);
+        assertThat(service.preferences).isEqualTo(RecommendationPreferencesDto.defaults());
     }
 
     @Test
@@ -199,6 +224,7 @@ class WeatherControllerTest {
         }
 
         private RecommendationPreferencesDto preferences;
+        private List<CalendarEvent> calendarEvents;
 
         @Override
         public WeatherResponse getCurrentWeather(String zipCode, RecommendationPreferencesDto preferences) {
@@ -206,6 +232,17 @@ class WeatherControllerTest {
                 throw exception;
             }
             this.preferences = preferences;
+            return response;
+        }
+
+        @Override
+        public WeatherResponse getCurrentWeather(String zipCode, RecommendationPreferencesDto preferences,
+                List<CalendarEvent> calendarEvents) {
+            if (exception != null) {
+                throw exception;
+            }
+            this.preferences = preferences;
+            this.calendarEvents = calendarEvents;
             return response;
         }
     }

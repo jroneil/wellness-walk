@@ -8,11 +8,22 @@ I actually like this direction better. It takes what initially sounded like a "w
 
 ### Intelligent Break Recommendation Platform
 
-**Version:** 2.0
+**Version:** 2.6
 
 **Status:** Draft
 
 ---
+
+## Version 2.6 — Recommendation Outcomes
+
+Users may explicitly start, complete, partially complete, skip, dismiss, or
+manually record a walk. Existing unclassified history remains unknown. Optional
+weekly goals use user-chosen values and neutral language. Installation-wide data
+controls provide retention, deletion, and secret-safe exports. PWA support improves
+installability and offline explanation without promising background delivery.
+
+The release adds no AI, medical targets, automatic detection, GPS, social ranking,
+authentication, calendar writes, or remote notification service.
 
 # Executive Summary
 
@@ -142,6 +153,12 @@ Display
 * Minimum available walking window
 
 Meeting details are never stored.
+
+Version 2.2 supports browser-local Manual events and opt-in, read-only CalDAV availability. Only minimum necessary normalized fields are used, and credentials remain backend-side.
+
+Version 2.3 discovers CalDAV principals, calendar homes, and event calendars; supports explicit selection of multiple calendars; and validates read-only synchronization against an isolated Radicale development server.
+
+Version 2.4 durably stores non-secret provider configuration and selections, encrypts provider credentials at rest, and adds optional read-only Google Calendar OAuth. Manual events remain device-local; Google and CalDAV normalize into the same recommendation input.
 
 ---
 
@@ -400,3 +417,11 @@ If this really is a manager's test, this version shows a level of thinking beyon
 * It is designed with extensibility in mind, making it easy to replace the mock operational data with real enterprise integrations later.
 
 That demonstrates not just coding ability, but product design, architectural thinking, and an understanding of how to build software that aligns with business needs.
+
+## Version 2.5 Requirements
+
+Version 2.5 makes recommendations proactive while preserving deterministic selection. Meaningful recommendation changes are retained as provider-neutral wellness history. Users can view daily and weekly summaries, conflicts, missed opportunities, change explanations, and hourly opportunity timelines. Optional browser notifications are delivered only for available, conflict-free recommendations above the configured threshold and within notification policy. External calendar access remains read-only; no AI, authentication, email, SMS, or push provider is introduced.
+
+## Version 2.7 completion release
+
+Version 2.7 exposes start, skip, dismiss, cancel, and completion interactions without changing deterministic weather or availability selection. Completion feedback remains non-medical. Eligible past opportunities are classified as expired by a bounded, idempotent scheduled job; calendar conflicts and weather-rejected windows are not. Destructive history actions explain their scope and preserve provider configuration, credentials, goals, and settings.

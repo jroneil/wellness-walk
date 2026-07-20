@@ -12,30 +12,66 @@ import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.oneil.wellness.walkplanner.calendar.dto.CalendarConflictDto;
+import com.oneil.wellness.walkplanner.calendar.model.CalendarEvent;
+import com.oneil.wellness.walkplanner.calendar.service.CalendarService;
+import com.oneil.wellness.walkplanner.calendar.service.ManualCalendarService;
+import com.oneil.wellness.walkplanner.config.RecommendationEngineProperties;
 import com.oneil.wellness.walkplanner.dto.HourlyForecastPeriod;
 import com.oneil.wellness.walkplanner.recommendation.dto.BestWalkingWindowDto;
+import com.oneil.wellness.walkplanner.recommendation.dto.IdealWeatherWindowDto;
 import com.oneil.wellness.walkplanner.recommendation.dto.PreferredTimeOfDay;
 import com.oneil.wellness.walkplanner.recommendation.dto.RainTolerance;
 import com.oneil.wellness.walkplanner.recommendation.dto.RecommendationPreferencesDto;
 import com.oneil.wellness.walkplanner.recommendation.dto.TemperaturePreference;
 import com.oneil.wellness.walkplanner.recommendation.dto.WindTolerance;
 import com.oneil.wellness.walkplanner.recommendation.dto.WalkingRecommendationDto;
+import com.oneil.wellness.walkplanner.recommendation.engine.RecommendationEngine;
+import com.oneil.wellness.walkplanner.recommendation.engine.calendar.AvailabilityAnalyzer;
+import com.oneil.wellness.walkplanner.recommendation.engine.model.CandidateWindow;
+import com.oneil.wellness.walkplanner.recommendation.engine.model.RecommendationResult;
+import com.oneil.wellness.walkplanner.recommendation.engine.preferences.PreferenceScorer;
+import com.oneil.wellness.walkplanner.recommendation.engine.util.TimeWindowUtilities;
 import com.oneil.wellness.walkplanner.recommendation.model.ScoredWalkingPeriod;
+import com.oneil.wellness.walkplanner.recommendation.model.WalkingRating;
 
 @Service
 public class WalkingRecommendationService {
 
     private final WalkingScoreService scoreService;
+    private final CalendarService calendarService;
+    private final RecommendationEngine recommendationEngine;
     private final Clock clock;
 
     @Autowired
+    public WalkingRecommendationService(WalkingScoreService scoreService, CalendarService calendarService,
+            RecommendationEngine recommendationEngine) {
+        this(scoreService, calendarService, recommendationEngine, Clock.systemDefaultZone());
+    }
+
     public WalkingRecommendationService(WalkingScoreService scoreService) {
-        this(scoreService, Clock.systemDefaultZone());
+        this(scoreService, new ManualCalendarService(), defaultEngine(Clock.systemDefaultZone()), Clock.systemDefaultZone());
     }
 
     WalkingRecommendationService(WalkingScoreService scoreService, Clock clock) {
+        this(scoreService, new ManualCalendarService(), defaultEngine(clock), clock);
+    }
+
+    WalkingRecommendationService(WalkingScoreService scoreService, CalendarService calendarService, Clock clock) {
+        this(scoreService, calendarService, defaultEngine(clock), clock);
+    }
+
+    WalkingRecommendationService(WalkingScoreService scoreService, CalendarService calendarService,
+            RecommendationEngine recommendationEngine, Clock clock) {
         this.scoreService = scoreService;
+        this.calendarService = calendarService;
+        this.recommendationEngine = recommendationEngine;
         this.clock = clock;
+    }
+
+    private static RecommendationEngine defaultEngine(Clock clock) {
+        return new RecommendationEngine(new RecommendationEngineProperties(), new TimeWindowUtilities(),
+                new AvailabilityAnalyzer(), new PreferenceScorer(), clock);
     }
 
     public WalkingRecommendationDto recommendationFor(HourlyForecastPeriod period) {
@@ -76,34 +112,80 @@ public class WalkingRecommendationService {
     }
 
     public BestWalkingWindowDto bestWindow(List<HourlyForecastPeriod> periods, RecommendationPreferencesDto preferences) {
-        RecommendationPreferencesDto normalizedPreferences = preferences == null
-                ? RecommendationPreferencesDto.defaults()
-                : preferences.normalized();
-        return bestPeriod(periods, normalizedPreferences)
-                .map(period -> {
-                    WalkingRecommendationDto recommendation = period.walkingRecommendation();
-                    String endTime = parseStartTime(period.startTime())
-                            .map(start -> start.plusMinutes(normalizedPreferences.walkDurationMinutes()).toString())
-                            .orElse(null);
-                    boolean belowMinimumScore = recommendation.score() < normalizedPreferences.minimumScore();
-                    return new BestWalkingWindowDto(
-                            period.startTime(),
-                            endTime,
-                            recommendation.score(),
-                            recommendation.rating(),
-                            recommendation.ratingLabel(),
-                            recommendation.ratingLabel() + " weather for a restorative walk.",
-                            recommendation.reasons().stream().limit(3).toList(),
-                            recommendation.warnings(),
-                            normalizedPreferences.walkDurationMinutes(),
-                            preferenceReasons(period, normalizedPreferences),
-                            normalizedPreferences.minimumScore(),
-                            belowMinimumScore,
-                            belowMinimumScore
-                                    ? "Best available window is below your minimum score of " + normalizedPreferences.minimumScore() + "."
-                                    : null);
-                })
+        return bestWindow(periods, preferences, List.of());
+    }
+
+    public BestWalkingWindowDto bestWindow(
+            List<HourlyForecastPeriod> periods,
+            RecommendationPreferencesDto preferences,
+            List<CalendarEvent> calendarEvents) {
+        RecommendationPreferencesDto normalized = preferences == null ? RecommendationPreferencesDto.defaults() : preferences.normalized();
+        RecommendationResult result = recommendationEngine.recommend(periods, normalized,
+                calendarEvents == null ? List.of() : calendarEvents);
+        if (result.selected() == null) {
+            IdealWeatherWindowDto ideal = result.idealWeather() == null ? null : idealWeatherWindow(result.idealWeather());
+            return new BestWalkingWindowDto(null, null, 0, WalkingRating.NOT_RECOMMENDED, "Not Recommended",
+                    result.noAvailableReason(), List.of(), List.of(result.noAvailableReason()), normalized.walkDurationMinutes(),
+                    List.of(), normalized.minimumScore(), true, result.noAvailableReason(), "UNAVAILABLE",
+                    result.explanation().reason(), null, ideal, ideal == null ? 0 : ideal.score(), 0, 0, 0,
+                    result.explanation().calendarReasons(), result.noAvailableReason());
+        }
+        CandidateWindow selected = result.selected();
+        WalkingRecommendationDto weather = selected.representativePeriod().walkingRecommendation();
+        WalkingRating rating = WalkingRating.fromScore(selected.overallScore());
+        boolean belowMinimum = selected.overallScore() < normalized.minimumScore();
+        IdealWeatherWindowDto ideal = result.idealWeather() != null && !result.idealWeather().available()
+                ? idealWeatherWindow(result.idealWeather()) : null;
+        List<String> preferenceReasons = new ArrayList<>();
+        preferenceReasons.add(normalized.walkDurationMinutes() + "-minute walk window");
+        preferenceReasons.addAll(result.explanation().preferenceReasons());
+        return new BestWalkingWindowDto(selected.startTime().toString(), selected.endTime().toString(),
+                selected.overallScore(), rating, rating.label(), rating.label() + " overall wellness window.",
+                weather.reasons().stream().limit(3).toList(), weather.warnings(), normalized.walkDurationMinutes(),
+                preferenceReasons, normalized.minimumScore(), belowMinimum,
+                belowMinimum ? "Best available window is below your minimum score of " + normalized.minimumScore() + "." : null,
+                "AVAILABLE", result.explanation().reason(), null, ideal, selected.weatherScore(), 100,
+                selected.preferenceScore(), selected.overallScore(), result.explanation().calendarReasons(), null);
+    }
+
+    private IdealWeatherWindowDto idealWeatherWindow(CandidateWindow candidate) {
+        return new IdealWeatherWindowDto(candidate.startTime().toString(), candidate.endTime().toString(),
+                candidate.weatherScore(), candidate.available() ? "AVAILABLE" : "UNAVAILABLE",
+                candidate.conflict() == null ? null : toConflictDto(candidate.conflict()));
+    }
+
+    private Optional<CalendarEvent> conflictFor(
+            HourlyForecastPeriod period,
+            int durationMinutes,
+            List<CalendarEvent> events) {
+        return parseStartTime(period.startTime())
+                .flatMap(start -> calendarService.findBusyConflict(start, start.plusMinutes(durationMinutes), events));
+    }
+
+    private IdealWeatherWindowDto idealWeatherWindow(
+            HourlyForecastPeriod period,
+            int durationMinutes,
+            List<CalendarEvent> events) {
+        OffsetDateTime start = parseStartTime(period.startTime()).orElseThrow();
+        OffsetDateTime end = start.plusMinutes(durationMinutes);
+        CalendarConflictDto conflict = calendarService.findBusyConflict(start, end, events)
+                .map(this::toConflictDto)
                 .orElse(null);
+        return new IdealWeatherWindowDto(
+                start.toString(),
+                end.toString(),
+                period.walkingRecommendation().score(),
+                conflict == null ? "AVAILABLE" : "UNAVAILABLE",
+                conflict);
+    }
+
+    private CalendarConflictDto toConflictDto(CalendarEvent event) {
+        return new CalendarConflictDto(
+                event.id(),
+                event.title(),
+                event.startTime().toString(),
+                event.endTime().toString(),
+                event.source() == null ? "MANUAL" : event.source().name());
     }
 
     public WalkingRecommendationDto toDto(ScoredWalkingPeriod scored) {
@@ -195,6 +277,7 @@ public class WalkingRecommendationService {
         int hour = startTime.get().getHour();
         return switch (preferredTimeOfDay) {
             case MORNING -> hour >= 6 && hour < 12;
+            case LUNCH -> hour >= 11 && hour < 14;
             case AFTERNOON -> hour >= 12 && hour < 17;
             case EVENING -> hour >= 17 && hour < 21;
             case ANY -> false;
